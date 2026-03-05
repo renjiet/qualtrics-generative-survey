@@ -30,7 +30,9 @@
   .main.with-creds { height: calc(100vh - 50px - 70px); }
 
   /* Sidebar */
-  .sidebar { width: 360px; min-width: 300px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; padding: 12px; flex-shrink: 0; }
+  .sidebar { width: 360px; min-width: 200px; max-width: 60vw; background: #fff; border-right: none; overflow-y: auto; padding: 12px; flex-shrink: 0; }
+  .sidebar-resize { width: 5px; cursor: col-resize; background: #ddd; flex-shrink: 0; transition: background 0.15s; }
+  .sidebar-resize:hover, .sidebar-resize.active { background: #3498db; }
   .sidebar .block-item { margin-bottom: 6px; }
   .sidebar .block-header { background: #34495e; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 0.85em; display: flex; align-items: center; cursor: pointer; gap: 4px; }
   .sidebar .block-header .block-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -112,6 +114,16 @@
   .detail-box .btn-gen-js:hover { background: #d35400; }
   .detail-box .btn-gen-js:disabled { background: #bbb; cursor: not-allowed; }
 
+  /* Search results */
+  .search-results { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #ccc; border-top: none; border-radius: 0 0 4px 4px; max-height: 240px; overflow-y: auto; z-index: 20; display: none; box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
+  .search-results.open { display: block; }
+  .search-results .sr-item { padding: 6px 10px; cursor: pointer; font-size: 0.8em; border-bottom: 1px solid #f0f0f0; }
+  .search-results .sr-item:hover { background: #eef; }
+  .search-results .sr-item .sr-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .search-results .sr-item .sr-meta { font-size: 0.75em; color: #888; }
+  .search-results .sr-item mark { background: #fff3b0; padding: 0; }
+  .search-results .sr-empty { padding: 8px 10px; font-size: 0.8em; color: #888; font-style: italic; }
+
   /* Drag and drop */
   [draggable="true"] { cursor: grab; }
   [draggable="true"]:active { cursor: grabbing; }
@@ -178,8 +190,13 @@
       <h2>Survey Overview</h2>
       <button class="btn-refresh" onclick="loadSurvey()">Refresh</button>
     </div>
+    <div style="position:relative; margin-bottom:8px;">
+      <input type="text" id="sidebarSearch" placeholder="Search questions..." oninput="sidebarSearchHandler()" style="width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:3px; font-size:0.82em;">
+      <div id="searchResults" class="search-results"></div>
+    </div>
     <div id="blockList"><span class="loading">Connect to load survey...</span></div>
   </div>
+  <div class="sidebar-resize" id="sidebarResize"></div>
 
   <div class="content">
     <div class="creator">
@@ -894,6 +911,115 @@ async function deleteQuestion(questionId) {
     alert('Delete failed: ' + e.message);
   }
 }
+
+// --- Sidebar search ---
+function sidebarSearchHandler() {
+  const input = document.getElementById('sidebarSearch');
+  const resultsEl = document.getElementById('searchResults');
+  const query = input.value.trim().toLowerCase();
+
+  if (!query) {
+    resultsEl.classList.remove('open');
+    resultsEl.innerHTML = '';
+    return;
+  }
+
+  const matches = [];
+  for (const block of surveyBlocks) {
+    for (const q of block.Questions) {
+      const text = (q.QuestionText || '').replace(/<[^>]*>/g, '');
+      const desc = q.QuestionDescription || q.QuestionID;
+      if (text.toLowerCase().includes(query) || desc.toLowerCase().includes(query) || q.QuestionID.toLowerCase().includes(query)) {
+        matches.push({ qid: q.QuestionID, text, desc, blockId: block.BlockID, blockName: block.Description || block.BlockID, type: q.QuestionType });
+      }
+    }
+  }
+
+  if (!matches.length) {
+    resultsEl.innerHTML = '<div class="sr-empty">No results</div>';
+    resultsEl.classList.add('open');
+    return;
+  }
+
+  let html = '';
+  for (const m of matches.slice(0, 20)) {
+    const highlighted = highlightMatch(esc(m.text).substring(0, 80) || m.qid, query);
+    const descHighlighted = highlightMatch(esc(m.desc), query);
+    html += `<div class="sr-item" onclick="searchGoTo('${m.qid}','${m.blockId}')">
+      <span class="sr-text">${highlighted}</span>
+      <span class="sr-meta">${descHighlighted} · ${m.type} · ${esc(m.blockName)}</span>
+    </div>`;
+  }
+  resultsEl.innerHTML = html;
+  resultsEl.classList.add('open');
+}
+
+function highlightMatch(text, query) {
+  const idx = text.toLowerCase().indexOf(query);
+  if (idx === -1) return text;
+  return text.substring(0, idx) + '<mark>' + text.substring(idx, idx + query.length) + '</mark>' + text.substring(idx + query.length);
+}
+
+function searchGoTo(questionId, blockId) {
+  // Close search
+  document.getElementById('sidebarSearch').value = '';
+  document.getElementById('searchResults').classList.remove('open');
+  document.getElementById('searchResults').innerHTML = '';
+
+  // Expand the block if collapsed
+  if (collapsedBlocks.has(blockId)) {
+    toggleBlock(blockId);
+  }
+
+  // Find and scroll to the question item
+  const qEl = document.querySelector(`.question-item[data-question-id="${questionId}"]`);
+  if (qEl) {
+    qEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    qEl.style.transition = 'background 0.3s';
+    qEl.style.background = '#fff3b0';
+    setTimeout(() => { qEl.style.background = ''; }, 1500);
+  }
+}
+
+// Close search results on outside click
+document.addEventListener('click', function(e) {
+  const searchBox = document.getElementById('sidebarSearch');
+  const resultsEl = document.getElementById('searchResults');
+  if (!searchBox.contains(e.target) && !resultsEl.contains(e.target)) {
+    resultsEl.classList.remove('open');
+  }
+});
+
+// --- Resizable sidebar ---
+(function() {
+  const handle = document.getElementById('sidebarResize');
+  const sidebar = document.querySelector('.sidebar');
+  let startX, startW;
+
+  handle.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    handle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', onStop);
+  });
+
+  function onDrag(e) {
+    const newW = startW + (e.clientX - startX);
+    sidebar.style.width = Math.max(200, Math.min(newW, window.innerWidth * 0.6)) + 'px';
+  }
+
+  function onStop() {
+    handle.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', onStop);
+  }
+})();
 
 // --- Init ---
 loadCreds();
