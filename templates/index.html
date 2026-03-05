@@ -130,6 +130,7 @@
 <div class="topbar">
   <h1>Qualtrics Survey Automation</h1>
   <button class="toggle-creds" onclick="toggleCreds()">Credentials</button>
+  <button onclick="previewSurvey()" title="Open Qualtrics survey preview in new tab">Preview Survey</button>
   <span id="connStatus" class="conn-status"></span>
 </div>
 
@@ -264,6 +265,12 @@ function toggleCreds() {
   const m = document.getElementById('mainLayout');
   p.classList.toggle('open');
   m.classList.toggle('with-creds', p.classList.contains('open'));
+}
+
+function previewSurvey() {
+  const c = getCreds();
+  if (!c.dataCenter || !c.surveyId) return alert('Enter data center and survey ID first');
+  window.open(`https://${c.dataCenter}.qualtrics.com/jfe/preview/${c.surveyId}`, '_blank');
 }
 
 // --- State ---

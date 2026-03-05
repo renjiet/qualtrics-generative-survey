@@ -30,5 +30,8 @@ Thumbs.db
 _sample_qualtrics.ipynb
 .ipynb_checkpoints/
 
+# Internal notes
+FUTURE_WORK.md
+
 # Debug logs
 /tmp/qualtrics_debug.log
