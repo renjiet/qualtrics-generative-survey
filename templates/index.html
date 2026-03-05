@@ -52,7 +52,7 @@
   .sb:hover { opacity: 1; }
   .sb.danger { color: #c0392b; }
   .sb.danger:hover { color: #e74c3c; }
-  .sb.move { color: #2980b9; font-size: 0.75em; }
+
   .sb.force { font-size: 0.6em; padding: 1px 4px; border-radius: 2px; font-weight: 700; letter-spacing: 0.5px; }
   .sb.force.on { background: #e74c3c; color: #fff; opacity: 1; }
   .sb.force.off { background: #ddd; color: #888; }
@@ -112,11 +112,13 @@
   .detail-box .btn-gen-js:hover { background: #d35400; }
   .detail-box .btn-gen-js:disabled { background: #bbb; cursor: not-allowed; }
 
-  /* Move question popover */
-  .move-popover { position: absolute; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 50; min-width: 180px; padding: 4px 0; }
-  .move-popover .move-option { padding: 5px 12px; font-size: 0.8em; cursor: pointer; }
-  .move-popover .move-option:hover { background: #eef; }
-  .move-popover .move-header { padding: 5px 12px; font-size: 0.75em; color: #888; font-weight: 600; border-bottom: 1px solid #eee; }
+  /* Drag and drop */
+  [draggable="true"] { cursor: grab; }
+  [draggable="true"]:active { cursor: grabbing; }
+  .block-item.dragging, .question-item.dragging { opacity: 0.4; }
+  .drag-indicator-top { border-top: 2px solid #3498db !important; }
+  .drag-indicator-bottom { border-bottom: 2px solid #3498db !important; }
+  .block-questions.drag-over-empty { background: #eef5ff; min-height: 24px; border-radius: 3px; }
 
   .loading { color: #888; font-style: italic; }
   .error-msg { color: #c0392b; background: #fdecea; padding: 8px 12px; border-radius: 4px; font-size: 0.85em; margin: 8px 0; }
@@ -327,17 +329,18 @@ function renderSidebar() {
     const isCollapsed = collapsedBlocks.has(block.BlockID);
     const arrowClass = isCollapsed ? 'collapse-arrow collapsed' : 'collapse-arrow';
     html += `<div class="block-item" data-block-id="${block.BlockID}">
-      <div class="block-header">
+      <div class="block-header" draggable="true"
+        ondragstart="blockDragStart(event,'${block.BlockID}')"
+        ondragover="blockDragOver(event)" ondragleave="clearDragIndicators(this)"
+        ondrop="blockDrop(event,'${block.BlockID}')" ondragend="dragEnd(event)">
         <span class="${arrowClass}" onclick="toggleBlock('${block.BlockID}')">&#9660;</span>
         <span class="block-name" onclick="toggleBlock('${block.BlockID}')">${esc(block.Description || block.BlockID)}</span>
         <span class="block-count">${block.QuestionCount}Q</span>
-        <span class="sb-group">
-          <button class="sb" onclick="event.stopPropagation();moveBlock('${block.BlockID}',-1)" title="Move up">&#9650;</button>
-          <button class="sb" onclick="event.stopPropagation();moveBlock('${block.BlockID}',1)" title="Move down">&#9660;</button>
-          <button class="sb danger" onclick="event.stopPropagation();deleteBlock('${block.BlockID}','${esc(block.Description)}')" title="Delete block">&times;</button>
-        </span>
+        <button class="sb danger" onclick="event.stopPropagation();deleteBlock('${block.BlockID}','${esc(block.Description)}')" title="Delete block">&times;</button>
       </div>
-      <div class="block-questions ${isCollapsed ? 'collapsed' : ''}" id="bq-${block.BlockID}">`;
+      <div class="block-questions ${isCollapsed ? 'collapsed' : ''}" id="bq-${block.BlockID}"
+        ondragover="qContainerDragOver(event)" ondragleave="this.classList.remove('drag-over-empty')"
+        ondrop="qContainerDrop(event,'${block.BlockID}')" data-block-id="${block.BlockID}">`;
     for (let qi = 0; qi < block.Questions.length; qi++) {
       const q = block.Questions[qi];
       const truncated = (q.QuestionText || '').replace(/<[^>]*>/g, '').substring(0, 50);
@@ -346,18 +349,17 @@ function renderSidebar() {
       const forceLabel = forceOn ? 'REQ' : 'OPT';
       const forceTitle = forceOn ? 'Required (click to make optional)' : 'Optional (click to make required)';
       const desc = q.QuestionDescription || q.QuestionID;
-      html += `<div class="question-item" onclick="showDetail('${q.QuestionID}')">
-        <span class="sb-group">
-          <button class="sb" onclick="event.stopPropagation();moveQuestion('${block.BlockID}',${qi},-1)" title="Move up">&#9650;</button>
-          <button class="sb" onclick="event.stopPropagation();moveQuestion('${block.BlockID}',${qi},1)" title="Move down">&#9660;</button>
-        </span>
+      html += `<div class="question-item" draggable="true" data-question-id="${q.QuestionID}" data-block-id="${block.BlockID}"
+        onclick="showDetail('${q.QuestionID}')"
+        ondragstart="qDragStart(event,'${q.QuestionID}','${block.BlockID}')"
+        ondragover="qDragOver(event)" ondragleave="clearDragIndicators(this)"
+        ondrop="qDrop(event,'${q.QuestionID}','${block.BlockID}')" ondragend="dragEnd(event)">
         <span class="q-info">
           <span class="q-text" title="${esc(q.QuestionText)}">${esc(truncated || q.QuestionID)}</span>
           <span class="q-desc" onclick="event.stopPropagation();renameQuestion('${q.QuestionID}',this)" title="Click to rename">${esc(desc)}</span>
         </span>
         <span class="q-type">${q.QuestionType}</span>
         <button class="${forceCls}" onclick="event.stopPropagation();toggleForceResponse('${q.QuestionID}',${forceOn ? 'true' : 'false'})" title="${forceTitle}">${forceLabel}</button>
-        <button class="sb move" onclick="event.stopPropagation();showMovePopover(event,'${q.QuestionID}','${block.BlockID}')" title="Move to block">&#8596;</button>
         <button class="sb danger" onclick="event.stopPropagation();deleteQuestion('${q.QuestionID}')" title="Delete">&times;</button>
       </div>`;
     }
@@ -412,148 +414,174 @@ async function deleteBlock(blockId, blockName) {
   }
 }
 
-// --- Reorder blocks (via survey flow) ---
-async function moveBlock(blockId, direction) {
-  // Find the Block-type elements in the flow
-  if (!surveyFlow || !surveyFlow.Flow) return;
+// --- Drag and drop ---
+let dragState = null;
 
-  const flowElements = surveyFlow.Flow;
-  // Find index of the flow element referencing this block
-  let idx = -1;
-  for (let i = 0; i < flowElements.length; i++) {
-    if (flowElements[i].ID === blockId || flowElements[i].BlockID === blockId) {
-      idx = i;
-      break;
-    }
-  }
-  if (idx === -1) return alert('Block not found in survey flow');
-
-  const newIdx = idx + direction;
-  if (newIdx < 0 || newIdx >= flowElements.length) return; // already at edge
-
-  // Swap
-  const temp = flowElements[idx];
-  flowElements[idx] = flowElements[newIdx];
-  flowElements[newIdx] = temp;
-
-  const c = getCreds();
-  try {
-    await apiFetch('/api/flow/update', {
-      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, flowData: surveyFlow,
-    });
-    await loadSurvey();
-  } catch(e) {
-    alert('Reorder blocks failed: ' + e.message);
-  }
-}
-
-// --- Reorder questions within a block ---
-async function moveQuestion(blockId, questionIdx, direction) {
-  const blockData = rawBlocks[blockId];
-  if (!blockData) return;
-
-  const elements = blockData.BlockElements || [];
-  // Only work with Question-type elements for indexing
-  const questionElements = [];
-  const nonQuestionElements = [];
-  for (const el of elements) {
-    if (el.Type === 'Question') questionElements.push(el);
-    else nonQuestionElements.push(el);
-  }
-
-  const newIdx = questionIdx + direction;
-  if (newIdx < 0 || newIdx >= questionElements.length) return;
-
-  // Swap
-  const temp = questionElements[questionIdx];
-  questionElements[questionIdx] = questionElements[newIdx];
-  questionElements[newIdx] = temp;
-
-  // Rebuild: non-question elements first (like Page Break), then questions in new order
-  // Actually, preserve interleaving — just rebuild from original with the swap applied
-  blockData.BlockElements = [...nonQuestionElements, ...questionElements];
-
-  const c = getCreds();
-  try {
-    await apiFetch('/api/blocks/update', {
-      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
-      blockId: blockId, blockData: blockData,
-    });
-    await loadSurvey();
-  } catch(e) {
-    alert('Reorder questions failed: ' + e.message);
-  }
-}
-
-// --- Move question to another block ---
-let activePopover = null;
-
-function showMovePopover(event, questionId, sourceBlockId) {
-  closeMovePopover();
-  const btn = event.target;
-  const rect = btn.getBoundingClientRect();
-
-  const pop = document.createElement('div');
-  pop.className = 'move-popover';
-  pop.style.top = (rect.bottom + window.scrollY + 2) + 'px';
-  pop.style.left = (rect.left + window.scrollX) + 'px';
-  pop.style.position = 'fixed';
-
-  pop.innerHTML = '<div class="move-header">Move to block:</div>';
-  for (const b of surveyBlocks) {
-    if (b.BlockID === sourceBlockId) continue;
-    const opt = document.createElement('div');
-    opt.className = 'move-option';
-    opt.textContent = b.Description || b.BlockID;
-    opt.onclick = () => { closeMovePopover(); moveQuestionToBlock(questionId, sourceBlockId, b.BlockID); };
-    pop.appendChild(opt);
-  }
-
-  document.body.appendChild(pop);
-  activePopover = pop;
-
-  // Close on outside click
-  setTimeout(() => {
-    document.addEventListener('click', closeMovePopoverOnOutside, { once: true });
-  }, 0);
-}
-
-function closeMovePopover() {
-  if (activePopover) { activePopover.remove(); activePopover = null; }
-}
-function closeMovePopoverOnOutside(e) {
-  if (activePopover && !activePopover.contains(e.target)) closeMovePopover();
-}
-
-async function moveQuestionToBlock(questionId, sourceBlockId, targetBlockId) {
-  const c = getCreds();
-
-  // Get both blocks' raw data
-  const srcBlock = { ...rawBlocks[sourceBlockId] };
-  const tgtBlock = { ...rawBlocks[targetBlockId] };
-
-  // Remove question from source block
-  srcBlock.BlockElements = (srcBlock.BlockElements || []).filter(
-    el => !(el.Type === 'Question' && el.QuestionID === questionId)
+function clearDragIndicators(el) {
+  if (el) { el.classList.remove('drag-indicator-top', 'drag-indicator-bottom'); return; }
+  document.querySelectorAll('.drag-indicator-top, .drag-indicator-bottom, .drag-over-empty').forEach(
+    e => e.classList.remove('drag-indicator-top', 'drag-indicator-bottom', 'drag-over-empty')
   );
+}
 
-  // Add question to target block
-  tgtBlock.BlockElements = [...(tgtBlock.BlockElements || []), { Type: 'Question', QuestionID: questionId }];
+function dragEnd(event) {
+  document.querySelectorAll('.dragging').forEach(e => e.classList.remove('dragging'));
+  clearDragIndicators();
+  dragState = null;
+}
 
-  try {
-    // Update both blocks
-    await apiFetch('/api/blocks/update', {
+// -- Block drag --
+function blockDragStart(event, blockId) {
+  dragState = { type: 'block', blockId };
+  event.currentTarget.closest('.block-item').classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', blockId);
+}
+
+function blockDragOver(event) {
+  if (!dragState || dragState.type !== 'block') return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  const header = event.currentTarget;
+  const rect = header.getBoundingClientRect();
+  const midY = rect.top + rect.height / 2;
+  clearDragIndicators(header);
+  header.classList.add(event.clientY < midY ? 'drag-indicator-top' : 'drag-indicator-bottom');
+}
+
+function blockDrop(event, targetBlockId) {
+  event.preventDefault();
+  clearDragIndicators();
+  if (!dragState || dragState.type !== 'block' || dragState.blockId === targetBlockId) return;
+
+  const flow = surveyFlow.Flow;
+  if (!flow) return;
+
+  const srcIdx = flow.findIndex(f => f.ID === dragState.blockId || f.BlockID === dragState.blockId);
+  const tgtIdx = flow.findIndex(f => f.ID === targetBlockId || f.BlockID === targetBlockId);
+  if (srcIdx === -1 || tgtIdx === -1) return;
+
+  const header = event.currentTarget;
+  const rect = header.getBoundingClientRect();
+  const insertAfter = event.clientY >= rect.top + rect.height / 2;
+
+  const [item] = flow.splice(srcIdx, 1);
+  let newIdx = flow.findIndex(f => f.ID === targetBlockId || f.BlockID === targetBlockId);
+  if (insertAfter) newIdx++;
+  flow.splice(newIdx, 0, item);
+
+  const c = getCreds();
+  apiFetch('/api/flow/update', {
+    apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, flowData: surveyFlow,
+  }).then(() => loadSurvey()).catch(e => alert('Reorder blocks failed: ' + e.message));
+}
+
+// -- Question drag --
+function qDragStart(event, questionId, blockId) {
+  dragState = { type: 'question', questionId, sourceBlockId: blockId };
+  event.currentTarget.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', questionId);
+  event.stopPropagation();
+}
+
+function qDragOver(event) {
+  if (!dragState || dragState.type !== 'question') return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.dataTransfer.dropEffect = 'move';
+  const el = event.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const midY = rect.top + rect.height / 2;
+  clearDragIndicators(el);
+  el.classList.add(event.clientY < midY ? 'drag-indicator-top' : 'drag-indicator-bottom');
+}
+
+function qDrop(event, targetQuestionId, targetBlockId) {
+  event.preventDefault();
+  event.stopPropagation();
+  clearDragIndicators();
+  if (!dragState || dragState.type !== 'question') return;
+  if (dragState.questionId === targetQuestionId) return;
+
+  const el = event.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const insertAfter = event.clientY >= rect.top + rect.height / 2;
+
+  const srcBlockId = dragState.sourceBlockId;
+  const qId = dragState.questionId;
+  const c = getCreds();
+
+  if (srcBlockId === targetBlockId) {
+    // Same block reorder
+    const blockData = rawBlocks[targetBlockId];
+    const qEls = (blockData.BlockElements || []).filter(e => e.Type === 'Question');
+    const nonQ = (blockData.BlockElements || []).filter(e => e.Type !== 'Question');
+    const srcI = qEls.findIndex(e => e.QuestionID === qId);
+    const tgtI = qEls.findIndex(e => e.QuestionID === targetQuestionId);
+    if (srcI === -1 || tgtI === -1) return;
+    const [moved] = qEls.splice(srcI, 1);
+    let ins = qEls.findIndex(e => e.QuestionID === targetQuestionId);
+    if (insertAfter) ins++;
+    qEls.splice(ins, 0, moved);
+    blockData.BlockElements = [...nonQ, ...qEls];
+    apiFetch('/api/blocks/update', {
       apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
-      blockId: sourceBlockId, blockData: srcBlock,
-    });
-    await apiFetch('/api/blocks/update', {
-      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
-      blockId: targetBlockId, blockData: tgtBlock,
-    });
-    await loadSurvey();
-  } catch(e) {
-    alert('Move question failed: ' + e.message);
+      blockId: targetBlockId, blockData,
+    }).then(() => loadSurvey()).catch(e => alert('Reorder failed: ' + e.message));
+  } else {
+    // Cross-block move
+    const srcBlock = { ...rawBlocks[srcBlockId] };
+    const tgtBlock = { ...rawBlocks[targetBlockId] };
+    srcBlock.BlockElements = (srcBlock.BlockElements || []).filter(
+      e => !(e.Type === 'Question' && e.QuestionID === qId)
+    );
+    const tgtQEls = (tgtBlock.BlockElements || []).filter(e => e.Type === 'Question');
+    const tgtNonQ = (tgtBlock.BlockElements || []).filter(e => e.Type !== 'Question');
+    let ins = tgtQEls.findIndex(e => e.QuestionID === targetQuestionId);
+    if (insertAfter) ins++;
+    tgtQEls.splice(ins, 0, { Type: 'Question', QuestionID: qId });
+    tgtBlock.BlockElements = [...tgtNonQ, ...tgtQEls];
+    Promise.all([
+      apiFetch('/api/blocks/update', { apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockId: srcBlockId, blockData: srcBlock }),
+      apiFetch('/api/blocks/update', { apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockId: targetBlockId, blockData: tgtBlock }),
+    ]).then(() => loadSurvey()).catch(e => alert('Move question failed: ' + e.message));
   }
+}
+
+// -- Drop into empty block container --
+function qContainerDragOver(event) {
+  if (!dragState || dragState.type !== 'question') return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  // Only show empty highlight if dropping on the container itself (not a child question)
+  if (event.target === event.currentTarget) {
+    event.currentTarget.classList.add('drag-over-empty');
+  }
+}
+
+function qContainerDrop(event, targetBlockId) {
+  if (!dragState || dragState.type !== 'question') return;
+  // Only handle if dropped on container itself (not on a question-item, which handles its own drop)
+  if (event.target !== event.currentTarget) return;
+  event.preventDefault();
+  clearDragIndicators();
+
+  const srcBlockId = dragState.sourceBlockId;
+  const qId = dragState.questionId;
+  if (srcBlockId === targetBlockId) return;
+
+  const c = getCreds();
+  const srcBlock = { ...rawBlocks[srcBlockId] };
+  const tgtBlock = { ...rawBlocks[targetBlockId] };
+  srcBlock.BlockElements = (srcBlock.BlockElements || []).filter(
+    e => !(e.Type === 'Question' && e.QuestionID === qId)
+  );
+  tgtBlock.BlockElements = [...(tgtBlock.BlockElements || []), { Type: 'Question', QuestionID: qId }];
+  Promise.all([
+    apiFetch('/api/blocks/update', { apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockId: srcBlockId, blockData: srcBlock }),
+    apiFetch('/api/blocks/update', { apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockId: targetBlockId, blockData: tgtBlock }),
+  ]).then(() => loadSurvey()).catch(e => alert('Move question failed: ' + e.message));
 }
 
 // --- Create block ---
