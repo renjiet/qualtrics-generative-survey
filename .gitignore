@@ -1,0 +1,34 @@
+# Claude Code
+.claude/
+
+# Credentials
+.credentials*
+
+# Stata MCP
+stata-mcp-folder/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+_sample_qualtrics.ipynb
+.ipynb_checkpoints/
+
+# Debug logs
+/tmp/qualtrics_debug.log

@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qualtrics Survey Automation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+  h1 { font-size: 1.3em; }
+  h2 { font-size: 1.1em; margin-bottom: 8px; }
+  h3 { font-size: 0.95em; margin-bottom: 6px; }
+
+  .topbar { background: #2c3e50; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .topbar h1 { flex-shrink: 0; }
+  .topbar button { background: #3498db; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+  .topbar button:hover { background: #2980b9; }
+  .topbar .toggle-creds { background: #7f8c8d; }
+
+  .creds-panel { background: #ecf0f1; padding: 14px 20px; display: none; border-bottom: 1px solid #bdc3c7; }
+  .creds-panel.open { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  .creds-panel label { font-size: 0.8em; font-weight: 600; display: block; margin-bottom: 2px; }
+  .creds-panel input, .creds-panel select { padding: 5px 8px; border: 1px solid #bdc3c7; border-radius: 3px; font-size: 0.85em; }
+  .creds-panel input[type="text"], .creds-panel input[type="password"] { width: 200px; }
+  .creds-panel .field { display: flex; flex-direction: column; }
+  .creds-panel .btn-connect { background: #27ae60; color: #fff; border: none; padding: 6px 18px; border-radius: 4px; cursor: pointer; align-self: flex-end; font-weight: 600; }
+  .creds-panel .btn-connect:hover { background: #219a52; }
+
+  .main { display: flex; height: calc(100vh - 50px); }
+  .main.with-creds { height: calc(100vh - 50px - 70px); }
+
+  /* Sidebar */
+  .sidebar { width: 360px; min-width: 300px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; padding: 12px; flex-shrink: 0; }
+  .sidebar .block-item { margin-bottom: 6px; }
+  .sidebar .block-header { background: #34495e; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 0.85em; display: flex; align-items: center; cursor: pointer; gap: 4px; }
+  .sidebar .block-header .block-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .block-header .block-count { font-size: 0.75em; opacity: 0.8; margin-right: 2px; }
+  .sidebar .block-header .collapse-arrow { font-size: 0.7em; margin-right: 4px; transition: transform 0.15s; }
+  .sidebar .block-header .collapse-arrow.collapsed { transform: rotate(-90deg); }
+  .sidebar .block-questions { overflow: hidden; }
+  .sidebar .block-questions.collapsed { display: none; }
+  .sidebar .question-item { padding: 4px 8px; margin: 2px 0; background: #f9f9f9; border-radius: 3px; font-size: 0.8em; cursor: pointer; display: flex; align-items: center; border: 1px solid transparent; gap: 3px; }
+  .sidebar .question-item:hover { background: #eef; border-color: #aac; }
+  .sidebar .question-item .q-info { flex: 1; overflow: hidden; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .sidebar .question-item .q-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .question-item .q-desc { font-size: 0.75em; color: #2980b9; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .question-item .q-desc:hover { text-decoration: underline; }
+  .sidebar .question-item .q-type { font-size: 0.7em; color: #888; flex-shrink: 0; }
+
+  /* Small icon buttons in sidebar */
+  .sb { background: none; border: none; cursor: pointer; font-size: 0.8em; padding: 1px 3px; flex-shrink: 0; opacity: 0.7; color: inherit; }
+  .sb:hover { opacity: 1; }
+  .sb.danger { color: #c0392b; }
+  .sb.danger:hover { color: #e74c3c; }
+  .sb.move { color: #2980b9; font-size: 0.75em; }
+  .sb.force { font-size: 0.6em; padding: 1px 4px; border-radius: 2px; font-weight: 700; letter-spacing: 0.5px; }
+  .sb.force.on { background: #e74c3c; color: #fff; opacity: 1; }
+  .sb.force.off { background: #ddd; color: #888; }
+  .sb-group { display: flex; gap: 1px; align-items: center; }
+
+  .sidebar .btn-refresh { background: #3498db; color: #fff; border: none; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8em; }
+
+  /* Content area */
+  .content { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+
+  .creator { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .block-selector { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .block-selector select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.85em; min-width: 200px; }
+  .block-selector input { padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.85em; width: 180px; }
+  .block-selector button { padding: 5px 12px; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em; }
+  .btn-new-block { background: #8e44ad; color: #fff; }
+  .btn-new-block:hover { background: #7d3c98; }
+  textarea.question-input { width: 100%; min-height: 120px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 0.9em; resize: vertical; }
+  .btn-parse { background: #e67e22; color: #fff; border: none; padding: 8px 24px; border-radius: 4px; cursor: pointer; font-size: 0.95em; margin-top: 8px; font-weight: 600; }
+  .btn-parse:hover { background: #d35400; }
+  .btn-parse:disabled { background: #bbb; cursor: not-allowed; }
+  .hint { font-size: 0.75em; color: #888; margin-top: 4px; }
+
+  .preview-panel { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .preview-item { border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 10px; }
+  .preview-item .input-label { font-size: 0.8em; color: #666; margin-bottom: 4px; font-style: italic; }
+  .preview-item textarea { width: 100%; min-height: 200px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.8em; padding: 8px; border: 1px solid #ccc; border-radius: 3px; resize: vertical; }
+  .preview-item .actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
+  .btn-submit { background: #27ae60; color: #fff; border: none; padding: 6px 16px; border-radius: 3px; cursor: pointer; font-size: 0.85em; }
+  .btn-submit:hover { background: #219a52; }
+  .btn-submit-all { background: #2c3e50; color: #fff; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-size: 0.9em; font-weight: 600; }
+  .btn-submit-all:hover { background: #1a252f; }
+  .status { font-size: 0.85em; font-weight: 600; }
+  .status.success { color: #27ae60; }
+  .status.error { color: #c0392b; }
+
+  .detail-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 100; justify-content: center; align-items: center; }
+  .detail-overlay.open { display: flex; }
+  .detail-box { background: #fff; border-radius: 8px; padding: 20px; width: 700px; max-width: 90vw; max-height: 80vh; overflow-y: auto; }
+  .detail-box h3 { margin-bottom: 10px; }
+  .detail-box pre { background: #f4f4f4; padding: 12px; border-radius: 4px; font-size: 0.8em; overflow-x: auto; white-space: pre-wrap; }
+  .detail-box .close-btn { float: right; background: none; border: none; font-size: 1.3em; cursor: pointer; color: #888; }
+  .detail-box .close-btn:hover { color: #333; }
+  .detail-box .tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 2px solid #ddd; }
+  .detail-box .tab { padding: 6px 16px; cursor: pointer; font-size: 0.85em; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #888; }
+  .detail-box .tab.active { color: #2c3e50; border-bottom-color: #3498db; }
+  .detail-box .tab:hover { color: #2c3e50; }
+  .detail-box .tab-content { display: none; }
+  .detail-box .tab-content.active { display: block; }
+  .detail-box .js-editor { width: 100%; min-height: 200px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.8em; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: vertical; tab-size: 2; }
+  .detail-box .btn-save-js { background: #27ae60; color: #fff; border: none; padding: 6px 18px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; }
+  .detail-box .btn-save-js:hover { background: #219a52; }
+  .detail-box .js-status { font-size: 0.85em; font-weight: 600; margin-left: 10px; }
+  .detail-box .js-prompt-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .detail-box .js-prompt-input { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85em; }
+  .detail-box .btn-gen-js { background: #e67e22; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
+  .detail-box .btn-gen-js:hover { background: #d35400; }
+  .detail-box .btn-gen-js:disabled { background: #bbb; cursor: not-allowed; }
+
+  /* Move question popover */
+  .move-popover { position: absolute; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 50; min-width: 180px; padding: 4px 0; }
+  .move-popover .move-option { padding: 5px 12px; font-size: 0.8em; cursor: pointer; }
+  .move-popover .move-option:hover { background: #eef; }
+  .move-popover .move-header { padding: 5px 12px; font-size: 0.75em; color: #888; font-weight: 600; border-bottom: 1px solid #eee; }
+
+  .loading { color: #888; font-style: italic; }
+  .error-msg { color: #c0392b; background: #fdecea; padding: 8px 12px; border-radius: 4px; font-size: 0.85em; margin: 8px 0; }
+  .conn-status { font-size: 0.8em; margin-left: 8px; }
+  .conn-status.ok { color: #2ecc71; }
+  .conn-status.fail { color: #e74c3c; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Qualtrics Survey Automation</h1>
+  <button class="toggle-creds" onclick="toggleCreds()">Credentials</button>
+  <span id="connStatus" class="conn-status"></span>
+</div>
+
+<div id="credsPanel" class="creds-panel open">
+  <div class="field">
+    <label>API Token</label>
+    <input type="password" id="apiToken" placeholder="Qualtrics API token">
+  </div>
+  <div class="field">
+    <label>Data Center</label>
+    <select id="dataCenter">
+      <option value="syd1">Sydney AU (syd1)</option>
+      <option value="iad1">Washington DC (iad1)</option>
+      <option value="pdx1">Portland OR (pdx1)</option>
+      <option value="fra1">EU (fra1)</option>
+      <option value="lhr1">London UK (lhr1)</option>
+      <option value="yul1">Canadian (yul1)</option>
+      <option value="sin1">Singapore (sin1)</option>
+      <option value="hnd1">Tokyo JP (hnd1)</option>
+      <option value="gov1">US Government (gov1)</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Survey ID</label>
+    <input type="text" id="surveyId" placeholder="SV_xxxxxxxxxxxxx">
+  </div>
+  <div class="field">
+    <label>Anthropic API Key</label>
+    <input type="password" id="llmKey" placeholder="sk-ant-...">
+  </div>
+  <button class="btn-connect" onclick="connect()">Connect</button>
+</div>
+
+<div class="main with-creds" id="mainLayout">
+  <div class="sidebar">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <h2>Survey Overview</h2>
+      <button class="btn-refresh" onclick="loadSurvey()">Refresh</button>
+    </div>
+    <div id="blockList"><span class="loading">Connect to load survey...</span></div>
+  </div>
+
+  <div class="content">
+    <div class="creator">
+      <h2>Create Questions</h2>
+      <div class="block-selector">
+        <label style="font-size:0.85em;">Target Block:</label>
+        <select id="blockSelect"><option value="">-- connect first --</option></select>
+        <input type="text" id="newBlockName" placeholder="New block name...">
+        <button class="btn-new-block" onclick="createBlock()">+ Block</button>
+      </div>
+      <textarea class="question-input" id="questionInput" placeholder="Paste your question(s) here. Separate multiple questions with ---"></textarea>
+      <div class="hint">Separate multiple questions with --- on its own line. Supports MC, TE, and DB question types.</div>
+      <button class="btn-parse" id="btnParse" onclick="parseQuestions()">Parse with Claude</button>
+    </div>
+
+    <div class="preview-panel" id="previewPanel" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h2>Preview & Submit</h2>
+        <button class="btn-submit-all" id="btnSubmitAll" onclick="submitAll()">Submit All</button>
+      </div>
+      <div id="previewList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="detailOverlay" onclick="if(event.target===this)closeDetail()">
+  <div class="detail-box">
+    <button class="close-btn" onclick="closeDetail()">&times;</button>
+    <h3 id="detailTitle">Question Detail</h3>
+    <div class="tabs">
+      <div class="tab active" onclick="switchDetailTab('json')">JSON</div>
+      <div class="tab" onclick="switchDetailTab('js')">JavaScript</div>
+    </div>
+    <div class="tab-content active" id="tab-json">
+      <pre id="detailJson"></pre>
+    </div>
+    <div class="tab-content" id="tab-js">
+      <div class="js-prompt-row">
+        <input class="js-prompt-input" id="jsPromptInput" placeholder="Describe what the JavaScript should do...">
+        <button class="btn-gen-js" id="btnGenJs" onclick="generateJs()">Generate with Claude</button>
+      </div>
+      <textarea class="js-editor" id="jsEditor" placeholder="// Add custom JavaScript here..."></textarea>
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        <button class="btn-save-js" onclick="saveQuestionJs()">Save JavaScript</button>
+        <span id="jsStatus" class="js-status"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Credential helpers ---
+function getCreds() {
+  return {
+    apiToken: document.getElementById('apiToken').value.trim(),
+    dataCenter: document.getElementById('dataCenter').value,
+    surveyId: document.getElementById('surveyId').value.trim(),
+    llmKey: document.getElementById('llmKey').value.trim(),
+  };
+}
+function saveCreds() {
+  localStorage.setItem('q_creds', JSON.stringify(getCreds()));
+}
+function loadCreds() {
+  const s = localStorage.getItem('q_creds');
+  if (!s) return;
+  try {
+    const c = JSON.parse(s);
+    if (c.apiToken) document.getElementById('apiToken').value = c.apiToken;
+    if (c.dataCenter) document.getElementById('dataCenter').value = c.dataCenter;
+    if (c.surveyId) document.getElementById('surveyId').value = c.surveyId;
+    if (c.llmKey) document.getElementById('llmKey').value = c.llmKey;
+  } catch(e) {}
+}
+function toggleCreds() {
+  const p = document.getElementById('credsPanel');
+  const m = document.getElementById('mainLayout');
+  p.classList.toggle('open');
+  m.classList.toggle('with-creds', p.classList.contains('open'));
+}
+
+// --- State ---
+let surveyBlocks = [];
+let rawBlocks = {};
+let allQuestions = {};
+let surveyFlow = {};
+let parsedResults = [];
+let collapsedBlocks = new Set(); // remember which blocks are collapsed
+
+// --- API helpers ---
+async function apiFetch(url, body) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data;
+}
+
+// --- Connect ---
+async function connect() {
+  saveCreds();
+  const status = document.getElementById('connStatus');
+  status.textContent = 'Connecting...';
+  status.className = 'conn-status';
+  try {
+    await loadSurvey();
+    status.textContent = 'Connected';
+    status.className = 'conn-status ok';
+  } catch(e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.className = 'conn-status fail';
+  }
+}
+
+// --- Load survey ---
+async function loadSurvey() {
+  const c = getCreds();
+  const data = await apiFetch('/api/blocks', { apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId });
+  surveyBlocks = data.blocks;
+  rawBlocks = data.rawBlocks;
+  allQuestions = data.questions;
+  surveyFlow = data.flow;
+  renderSidebar();
+  renderBlockSelect();
+}
+
+// --- Render sidebar ---
+function renderSidebar() {
+  const container = document.getElementById('blockList');
+  if (!surveyBlocks.length) {
+    container.innerHTML = '<span class="loading">No blocks found.</span>';
+    return;
+  }
+  let html = '';
+  for (let bi = 0; bi < surveyBlocks.length; bi++) {
+    const block = surveyBlocks[bi];
+    const isCollapsed = collapsedBlocks.has(block.BlockID);
+    const arrowClass = isCollapsed ? 'collapse-arrow collapsed' : 'collapse-arrow';
+    html += `<div class="block-item" data-block-id="${block.BlockID}">
+      <div class="block-header">
+        <span class="${arrowClass}" onclick="toggleBlock('${block.BlockID}')">&#9660;</span>
+        <span class="block-name" onclick="toggleBlock('${block.BlockID}')">${esc(block.Description || block.BlockID)}</span>
+        <span class="block-count">${block.QuestionCount}Q</span>
+        <span class="sb-group">
+          <button class="sb" onclick="event.stopPropagation();moveBlock('${block.BlockID}',-1)" title="Move up">&#9650;</button>
+          <button class="sb" onclick="event.stopPropagation();moveBlock('${block.BlockID}',1)" title="Move down">&#9660;</button>
+          <button class="sb danger" onclick="event.stopPropagation();deleteBlock('${block.BlockID}','${esc(block.Description)}')" title="Delete block">&times;</button>
+        </span>
+      </div>
+      <div class="block-questions ${isCollapsed ? 'collapsed' : ''}" id="bq-${block.BlockID}">`;
+    for (let qi = 0; qi < block.Questions.length; qi++) {
+      const q = block.Questions[qi];
+      const truncated = (q.QuestionText || '').replace(/<[^>]*>/g, '').substring(0, 50);
+      const forceOn = q.ForceResponse === 'ON';
+      const forceCls = forceOn ? 'sb force on' : 'sb force off';
+      const forceLabel = forceOn ? 'REQ' : 'OPT';
+      const forceTitle = forceOn ? 'Required (click to make optional)' : 'Optional (click to make required)';
+      const desc = q.QuestionDescription || q.QuestionID;
+      html += `<div class="question-item" onclick="showDetail('${q.QuestionID}')">
+        <span class="sb-group">
+          <button class="sb" onclick="event.stopPropagation();moveQuestion('${block.BlockID}',${qi},-1)" title="Move up">&#9650;</button>
+          <button class="sb" onclick="event.stopPropagation();moveQuestion('${block.BlockID}',${qi},1)" title="Move down">&#9660;</button>
+        </span>
+        <span class="q-info">
+          <span class="q-text" title="${esc(q.QuestionText)}">${esc(truncated || q.QuestionID)}</span>
+          <span class="q-desc" onclick="event.stopPropagation();renameQuestion('${q.QuestionID}',this)" title="Click to rename">${esc(desc)}</span>
+        </span>
+        <span class="q-type">${q.QuestionType}</span>
+        <button class="${forceCls}" onclick="event.stopPropagation();toggleForceResponse('${q.QuestionID}',${forceOn ? 'true' : 'false'})" title="${forceTitle}">${forceLabel}</button>
+        <button class="sb move" onclick="event.stopPropagation();showMovePopover(event,'${q.QuestionID}','${block.BlockID}')" title="Move to block">&#8596;</button>
+        <button class="sb danger" onclick="event.stopPropagation();deleteQuestion('${q.QuestionID}')" title="Delete">&times;</button>
+      </div>`;
+    }
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderBlockSelect() {
+  const sel = document.getElementById('blockSelect');
+  const prev = sel.value;
+  let html = '<option value="">-- Default Block --</option>';
+  for (const b of surveyBlocks) {
+    html += `<option value="${b.BlockID}">${esc(b.Description || b.BlockID)}</option>`;
+  }
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Toggle block collapse ---
+function toggleBlock(blockId) {
+  if (collapsedBlocks.has(blockId)) {
+    collapsedBlocks.delete(blockId);
+  } else {
+    collapsedBlocks.add(blockId);
+  }
+  const el = document.getElementById('bq-' + blockId);
+  if (el) el.classList.toggle('collapsed');
+  // Update arrow
+  const blockItem = el?.closest('.block-item');
+  const arrow = blockItem?.querySelector('.collapse-arrow');
+  if (arrow) arrow.classList.toggle('collapsed');
+}
+
+// --- Delete block ---
+async function deleteBlock(blockId, blockName) {
+  if (!confirm(`Delete block "${blockName || blockId}" and all its questions?`)) return;
+  const c = getCreds();
+  try {
+    await apiFetch('/api/blocks/delete', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockId: blockId,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Delete block failed: ' + e.message);
+  }
+}
+
+// --- Reorder blocks (via survey flow) ---
+async function moveBlock(blockId, direction) {
+  // Find the Block-type elements in the flow
+  if (!surveyFlow || !surveyFlow.Flow) return;
+
+  const flowElements = surveyFlow.Flow;
+  // Find index of the flow element referencing this block
+  let idx = -1;
+  for (let i = 0; i < flowElements.length; i++) {
+    if (flowElements[i].ID === blockId || flowElements[i].BlockID === blockId) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx === -1) return alert('Block not found in survey flow');
+
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= flowElements.length) return; // already at edge
+
+  // Swap
+  const temp = flowElements[idx];
+  flowElements[idx] = flowElements[newIdx];
+  flowElements[newIdx] = temp;
+
+  const c = getCreds();
+  try {
+    await apiFetch('/api/flow/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, flowData: surveyFlow,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Reorder blocks failed: ' + e.message);
+  }
+}
+
+// --- Reorder questions within a block ---
+async function moveQuestion(blockId, questionIdx, direction) {
+  const blockData = rawBlocks[blockId];
+  if (!blockData) return;
+
+  const elements = blockData.BlockElements || [];
+  // Only work with Question-type elements for indexing
+  const questionElements = [];
+  const nonQuestionElements = [];
+  for (const el of elements) {
+    if (el.Type === 'Question') questionElements.push(el);
+    else nonQuestionElements.push(el);
+  }
+
+  const newIdx = questionIdx + direction;
+  if (newIdx < 0 || newIdx >= questionElements.length) return;
+
+  // Swap
+  const temp = questionElements[questionIdx];
+  questionElements[questionIdx] = questionElements[newIdx];
+  questionElements[newIdx] = temp;
+
+  // Rebuild: non-question elements first (like Page Break), then questions in new order
+  // Actually, preserve interleaving — just rebuild from original with the swap applied
+  blockData.BlockElements = [...nonQuestionElements, ...questionElements];
+
+  const c = getCreds();
+  try {
+    await apiFetch('/api/blocks/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: blockId, blockData: blockData,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Reorder questions failed: ' + e.message);
+  }
+}
+
+// --- Move question to another block ---
+let activePopover = null;
+
+function showMovePopover(event, questionId, sourceBlockId) {
+  closeMovePopover();
+  const btn = event.target;
+  const rect = btn.getBoundingClientRect();
+
+  const pop = document.createElement('div');
+  pop.className = 'move-popover';
+  pop.style.top = (rect.bottom + window.scrollY + 2) + 'px';
+  pop.style.left = (rect.left + window.scrollX) + 'px';
+  pop.style.position = 'fixed';
+
+  pop.innerHTML = '<div class="move-header">Move to block:</div>';
+  for (const b of surveyBlocks) {
+    if (b.BlockID === sourceBlockId) continue;
+    const opt = document.createElement('div');
+    opt.className = 'move-option';
+    opt.textContent = b.Description || b.BlockID;
+    opt.onclick = () => { closeMovePopover(); moveQuestionToBlock(questionId, sourceBlockId, b.BlockID); };
+    pop.appendChild(opt);
+  }
+
+  document.body.appendChild(pop);
+  activePopover = pop;
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', closeMovePopoverOnOutside, { once: true });
+  }, 0);
+}
+
+function closeMovePopover() {
+  if (activePopover) { activePopover.remove(); activePopover = null; }
+}
+function closeMovePopoverOnOutside(e) {
+  if (activePopover && !activePopover.contains(e.target)) closeMovePopover();
+}
+
+async function moveQuestionToBlock(questionId, sourceBlockId, targetBlockId) {
+  const c = getCreds();
+
+  // Get both blocks' raw data
+  const srcBlock = { ...rawBlocks[sourceBlockId] };
+  const tgtBlock = { ...rawBlocks[targetBlockId] };
+
+  // Remove question from source block
+  srcBlock.BlockElements = (srcBlock.BlockElements || []).filter(
+    el => !(el.Type === 'Question' && el.QuestionID === questionId)
+  );
+
+  // Add question to target block
+  tgtBlock.BlockElements = [...(tgtBlock.BlockElements || []), { Type: 'Question', QuestionID: questionId }];
+
+  try {
+    // Update both blocks
+    await apiFetch('/api/blocks/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: sourceBlockId, blockData: srcBlock,
+    });
+    await apiFetch('/api/blocks/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: targetBlockId, blockData: tgtBlock,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Move question failed: ' + e.message);
+  }
+}
+
+// --- Create block ---
+async function createBlock() {
+  const name = document.getElementById('newBlockName').value.trim();
+  if (!name) return alert('Enter a block name');
+  const c = getCreds();
+  try {
+    const data = await apiFetch('/api/blocks/create', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockName: name,
+    });
+    document.getElementById('newBlockName').value = '';
+    await loadSurvey();
+    const newId = data.result?.BlockID;
+    if (newId) document.getElementById('blockSelect').value = newId;
+  } catch(e) {
+    alert('Failed to create block: ' + e.message);
+  }
+}
+
+// --- Parse questions ---
+async function parseQuestions() {
+  const text = document.getElementById('questionInput').value.trim();
+  if (!text) return alert('Enter at least one question');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your Anthropic API key');
+
+  const btn = document.getElementById('btnParse');
+  btn.disabled = true;
+  btn.textContent = 'Parsing...';
+
+  try {
+    const data = await apiFetch('/api/parse', { llmKey: c.llmKey, text: text });
+    parsedResults = data.results;
+    renderPreviews();
+  } catch(e) {
+    alert('Parse error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Parse with Claude';
+  }
+}
+
+// --- Render previews ---
+function renderPreviews() {
+  const panel = document.getElementById('previewPanel');
+  const list = document.getElementById('previewList');
+  if (!parsedResults.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  let html = '';
+  for (let i = 0; i < parsedResults.length; i++) {
+    const r = parsedResults[i];
+    html += `<div class="preview-item" id="preview-${i}">`;
+    html += `<div class="input-label">${esc(r.input.substring(0, 100))}${r.input.length > 100 ? '...' : ''}</div>`;
+    if (r.success) {
+      html += `<textarea id="json-${i}">${esc(JSON.stringify(r.json, null, 2))}</textarea>`;
+      html += `<div class="actions">
+        <button class="btn-submit" onclick="submitOne(${i})">Submit</button>
+        <span id="status-${i}" class="status"></span>
+      </div>`;
+    } else {
+      html += `<div class="error-msg">Error: ${esc(r.error)}</div>`;
+      if (r.raw) html += `<textarea id="json-${i}">${esc(r.raw)}</textarea>
+        <div class="actions">
+          <button class="btn-submit" onclick="submitOne(${i})">Submit (after fixing JSON)</button>
+          <span id="status-${i}" class="status"></span>
+        </div>`;
+    }
+    html += '</div>';
+  }
+  list.innerHTML = html;
+}
+
+// --- Submit one question ---
+async function submitOne(idx) {
+  const statusEl = document.getElementById('status-' + idx);
+  const textarea = document.getElementById('json-' + idx);
+  if (!textarea) return;
+
+  let qJson;
+  try {
+    qJson = JSON.parse(textarea.value);
+  } catch(e) {
+    statusEl.textContent = 'Invalid JSON';
+    statusEl.className = 'status error';
+    return;
+  }
+
+  const c = getCreds();
+  const blockId = document.getElementById('blockSelect').value;
+  statusEl.textContent = 'Submitting...';
+  statusEl.className = 'status';
+
+  try {
+    const data = await apiFetch('/api/submit', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: blockId || null, questionJson: qJson,
+    });
+    const qid = data.result?.QuestionID || 'OK';
+    statusEl.textContent = `Success (${qid})`;
+    statusEl.className = 'status success';
+    loadSurvey();
+  } catch(e) {
+    statusEl.textContent = 'Failed: ' + e.message;
+    statusEl.className = 'status error';
+  }
+}
+
+// --- Submit all ---
+async function submitAll() {
+  for (let i = 0; i < parsedResults.length; i++) {
+    const statusEl = document.getElementById('status-' + i);
+    if (statusEl && statusEl.classList.contains('success')) continue;
+    await submitOne(i);
+  }
+  loadSurvey();
+}
+
+// --- Show question detail ---
+let currentDetailQID = null;
+let currentDetailData = null;
+
+async function showDetail(questionId) {
+  const overlay = document.getElementById('detailOverlay');
+  const title = document.getElementById('detailTitle');
+  const json = document.getElementById('detailJson');
+  const jsEditor = document.getElementById('jsEditor');
+  const jsStatus = document.getElementById('jsStatus');
+
+  currentDetailQID = questionId;
+  currentDetailData = null;
+  title.textContent = 'Loading ' + questionId + '...';
+  json.textContent = '';
+  jsEditor.value = '';
+  jsStatus.textContent = '';
+  switchDetailTab('json');
+  overlay.classList.add('open');
+
+  const c = getCreds();
+  try {
+    const data = await apiFetch('/api/question/get', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+    });
+    const q = data.result;
+    currentDetailData = q;
+    title.textContent = questionId + ' - ' + (q.QuestionDescription || q.QuestionText || '').substring(0, 50);
+    json.textContent = JSON.stringify(q, null, 2);
+    jsEditor.value = q.QuestionJS || '';
+  } catch(e) {
+    title.textContent = 'Error';
+    json.textContent = e.message;
+  }
+}
+
+function switchDetailTab(tab) {
+  document.querySelectorAll('.detail-box .tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === tab));
+  document.getElementById('tab-json').classList.toggle('active', tab === 'json');
+  document.getElementById('tab-js').classList.toggle('active', tab === 'js');
+}
+
+async function generateJs() {
+  const prompt = document.getElementById('jsPromptInput').value.trim();
+  if (!prompt) return alert('Describe what the JavaScript should do');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your Anthropic API key');
+
+  const btn = document.getElementById('btnGenJs');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  try {
+    const data = await apiFetch('/api/generate-js', {
+      llmKey: c.llmKey,
+      prompt: prompt,
+      questionJson: currentDetailData || {},
+      existingJs: document.getElementById('jsEditor').value,
+    });
+    if (data.success) {
+      document.getElementById('jsEditor').value = data.code;
+    } else {
+      alert('Generation failed: ' + data.error);
+    }
+  } catch(e) {
+    alert('Generation failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate with Claude';
+  }
+}
+
+async function saveQuestionJs() {
+  if (!currentDetailQID || !currentDetailData) return;
+  const jsEditor = document.getElementById('jsEditor');
+  const jsStatus = document.getElementById('jsStatus');
+
+  const c = getCreds();
+  const update = buildUpdatePayload(currentDetailData);
+  update.QuestionJS = jsEditor.value;
+
+  jsStatus.textContent = 'Saving...';
+  jsStatus.style.color = '#888';
+  try {
+    await apiFetch('/api/question/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      questionId: currentDetailQID, questionJson: update,
+    });
+    jsStatus.textContent = 'Saved';
+    jsStatus.style.color = '#27ae60';
+  } catch(e) {
+    jsStatus.textContent = 'Failed: ' + e.message;
+    jsStatus.style.color = '#c0392b';
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detailOverlay').classList.remove('open');
+  currentDetailQID = null;
+  currentDetailData = null;
+}
+
+// --- Rename question (QuestionDescription + DataExportTag) ---
+async function renameQuestion(questionId, spanEl) {
+  const current = spanEl.textContent;
+  const newName = prompt('Enter new internal name (QuestionDescription):', current);
+  if (!newName || newName === current) return;
+
+  const c = getCreds();
+  try {
+    const data = await apiFetch('/api/question/get', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+    });
+    const update = buildUpdatePayload(data.result);
+    update.QuestionDescription = newName;
+    update.DataExportTag = newName;
+
+    await apiFetch('/api/question/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      questionId: questionId, questionJson: update,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Rename failed: ' + e.message);
+  }
+}
+
+// --- Build a clean update payload from a GET response (only writable fields) ---
+function buildUpdatePayload(q) {
+  const payload = {
+    ChoiceOrder: q.ChoiceOrder || [],
+    Choices: q.Choices || {},
+    Configuration: q.Configuration,
+    Language: q.Language || [],
+    QuestionDescription: q.QuestionDescription,
+    QuestionText: q.QuestionText,
+    QuestionType: q.QuestionType,
+    Selector: q.Selector,
+    Validation: q.Validation || { Settings: { ForceResponse: 'OFF', ForceResponseType: 'OFF', Type: 'None' } },
+  };
+  // Only include SubSelector if the question has one (Slider questions don't)
+  if ('SubSelector' in q) {
+    payload.SubSelector = q.SubSelector;
+  }
+  if (q.DataExportTag) payload.DataExportTag = q.DataExportTag;
+  if (q.RecodeValues) payload.RecodeValues = q.RecodeValues;
+  if (q.Randomization) payload.Randomization = q.Randomization;
+  return payload;
+}
+
+// --- Toggle force response ---
+async function toggleForceResponse(questionId, currentlyOn) {
+  const c = getCreds();
+  try {
+    const data = await apiFetch('/api/question/get', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+    });
+    const q = data.result;
+    const newValue = currentlyOn ? 'OFF' : 'ON';
+
+    const update = buildUpdatePayload(q);
+    update.Validation = {
+      Settings: {
+        ForceResponse: newValue,
+        ForceResponseType: newValue,
+        Type: 'None',
+      }
+    };
+
+    await apiFetch('/api/question/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      questionId: questionId, questionJson: update,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Toggle force response failed: ' + e.message);
+  }
+}
+
+// --- Delete question ---
+async function deleteQuestion(questionId) {
+  if (!confirm('Delete question ' + questionId + '?')) return;
+  const c = getCreds();
+  try {
+    await apiFetch('/api/question/delete', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+    });
+    await loadSurvey();
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+// --- Init ---
+loadCreds();
+</script>
+</body>
+</html>
