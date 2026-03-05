@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import requests
 import json
 import anthropic
+import openai
 
 app = Flask(__name__)
 
@@ -50,6 +51,41 @@ Rules:
 - If the user specifies choice values or variable names, use them exactly.
 - If the user specifies recode values (numbers in parentheses after choices), include a RecodeValues object mapping choice keys to those values.
 - Output ONLY the JSON object. No explanation, no markdown."""
+
+
+def llm_complete(llm_key, llm_provider, system_msg, user_msg, max_tokens=2048):
+    """Call either Anthropic or OpenAI and return the text response."""
+    if llm_provider == "openai":
+        client = openai.OpenAI(api_key=llm_key)
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            max_tokens=max_tokens,
+            temperature=0,
+        )
+        return resp.choices[0].message.content.strip()
+    else:
+        client = anthropic.Anthropic(api_key=llm_key)
+        resp = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=max_tokens,
+            system=system_msg,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return resp.content[0].text.strip()
+
+
+def strip_markdown_fences(content):
+    """Remove markdown code fences if present."""
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
+    return content
 
 
 def qualtrics_headers(api_token):
@@ -154,28 +190,17 @@ def create_block():
 def parse_question():
     data = request.json
     llm_key = data["llmKey"]
+    llm_provider = data.get("llmProvider", "anthropic")
     text = data["text"]
-
-    client = anthropic.Anthropic(api_key=llm_key)
 
     questions_raw = [q.strip() for q in text.split("---") if q.strip()]
     results = []
 
     for q_text in questions_raw:
+        content = ""
         try:
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=2048,
-                messages=[{"role": "user", "content": q_text}],
-                system=SYSTEM_PROMPT,
-            )
-            content = message.content[0].text.strip()
-            # Strip markdown fences if present
-            if content.startswith("```"):
-                content = content.split("\n", 1)[1] if "\n" in content else content[3:]
-                if content.endswith("```"):
-                    content = content[:-3]
-                content = content.strip()
+            content = llm_complete(llm_key, llm_provider, SYSTEM_PROMPT, q_text)
+            content = strip_markdown_fences(content)
             parsed = json.loads(content)
             results.append({"success": True, "json": parsed, "input": q_text})
         except json.JSONDecodeError as e:
@@ -260,17 +285,7 @@ def get_question():
     return jsonify(resp.json())
 
 
-@app.route("/api/generate-js", methods=["POST"])
-def generate_js():
-    data = request.json
-    llm_key = data["llmKey"]
-    prompt = data["prompt"]
-    question_json = data.get("questionJson", {})
-    existing_js = data.get("existingJs", "")
-
-    client = anthropic.Anthropic(api_key=llm_key)
-
-    system = """You are an expert at writing custom JavaScript for Qualtrics surveys.
+JS_SYSTEM_PROMPT = """You are an expert at writing custom JavaScript for Qualtrics surveys.
 
 Qualtrics question JavaScript runs inside the question's addOnload, addOnReady, or addOnUnload handlers. The standard template is:
 
@@ -303,24 +318,24 @@ Common Qualtrics JS APIs:
 
 Output ONLY the JavaScript code. No markdown fences, no explanation, no commentary. The code should be complete and ready to paste into the Qualtrics question JavaScript editor."""
 
+
+@app.route("/api/generate-js", methods=["POST"])
+def generate_js():
+    data = request.json
+    llm_key = data["llmKey"]
+    llm_provider = data.get("llmProvider", "anthropic")
+    prompt = data["prompt"]
+    question_json = data.get("questionJson", {})
+    existing_js = data.get("existingJs", "")
+
     user_msg = f"Question context:\n{json.dumps(question_json, indent=2)}\n\n"
     if existing_js:
         user_msg += f"Existing JavaScript:\n{existing_js}\n\n"
     user_msg += f"Request: {prompt}"
 
     try:
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            messages=[{"role": "user", "content": user_msg}],
-            system=system,
-        )
-        content = message.content[0].text.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+        content = llm_complete(llm_key, llm_provider, JS_SYSTEM_PROMPT, user_msg, max_tokens=4096)
+        content = strip_markdown_fences(content)
         return jsonify({"success": True, "code": content})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400

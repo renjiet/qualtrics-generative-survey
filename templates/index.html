@@ -157,7 +157,14 @@
     <input type="text" id="surveyId" placeholder="SV_xxxxxxxxxxxxx">
   </div>
   <div class="field">
-    <label>Anthropic API Key</label>
+    <label>LLM Provider</label>
+    <select id="llmProvider" onchange="updateLlmPlaceholder()">
+      <option value="anthropic">Anthropic (Claude)</option>
+      <option value="openai">OpenAI (GPT-4o)</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>LLM API Key</label>
     <input type="password" id="llmKey" placeholder="sk-ant-...">
   </div>
   <button class="btn-connect" onclick="connect()">Connect</button>
@@ -183,7 +190,7 @@
       </div>
       <textarea class="question-input" id="questionInput" placeholder="Paste your question(s) here. Separate multiple questions with ---"></textarea>
       <div class="hint">Separate multiple questions with --- on its own line. Supports MC, TE, and DB question types.</div>
-      <button class="btn-parse" id="btnParse" onclick="parseQuestions()">Parse with Claude</button>
+      <button class="btn-parse" id="btnParse" onclick="parseQuestions()">Parse with AI</button>
     </div>
 
     <div class="preview-panel" id="previewPanel" style="display:none;">
@@ -210,7 +217,7 @@
     <div class="tab-content" id="tab-js">
       <div class="js-prompt-row">
         <input class="js-prompt-input" id="jsPromptInput" placeholder="Describe what the JavaScript should do...">
-        <button class="btn-gen-js" id="btnGenJs" onclick="generateJs()">Generate with Claude</button>
+        <button class="btn-gen-js" id="btnGenJs" onclick="generateJs()">Generate with AI</button>
       </div>
       <textarea class="js-editor" id="jsEditor" placeholder="// Add custom JavaScript here..."></textarea>
       <div style="display:flex;align-items:center;margin-top:8px;">
@@ -228,8 +235,13 @@ function getCreds() {
     apiToken: document.getElementById('apiToken').value.trim(),
     dataCenter: document.getElementById('dataCenter').value,
     surveyId: document.getElementById('surveyId').value.trim(),
+    llmProvider: document.getElementById('llmProvider').value,
     llmKey: document.getElementById('llmKey').value.trim(),
   };
+}
+function updateLlmPlaceholder() {
+  const p = document.getElementById('llmProvider').value;
+  document.getElementById('llmKey').placeholder = p === 'openai' ? 'sk-...' : 'sk-ant-...';
 }
 function saveCreds() {
   localStorage.setItem('q_creds', JSON.stringify(getCreds()));
@@ -242,7 +254,9 @@ function loadCreds() {
     if (c.apiToken) document.getElementById('apiToken').value = c.apiToken;
     if (c.dataCenter) document.getElementById('dataCenter').value = c.dataCenter;
     if (c.surveyId) document.getElementById('surveyId').value = c.surveyId;
+    if (c.llmProvider) document.getElementById('llmProvider').value = c.llmProvider;
     if (c.llmKey) document.getElementById('llmKey').value = c.llmKey;
+    updateLlmPlaceholder();
   } catch(e) {}
 }
 function toggleCreds() {
@@ -572,14 +586,14 @@ async function parseQuestions() {
   btn.textContent = 'Parsing...';
 
   try {
-    const data = await apiFetch('/api/parse', { llmKey: c.llmKey, text: text });
+    const data = await apiFetch('/api/parse', { llmKey: c.llmKey, llmProvider: c.llmProvider, text: text });
     parsedResults = data.results;
     renderPreviews();
   } catch(e) {
     alert('Parse error: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Parse with Claude';
+    btn.textContent = 'Parse with AI';
   }
 }
 
@@ -714,6 +728,7 @@ async function generateJs() {
   try {
     const data = await apiFetch('/api/generate-js', {
       llmKey: c.llmKey,
+      llmProvider: c.llmProvider,
       prompt: prompt,
       questionJson: currentDetailData || {},
       existingJs: document.getElementById('jsEditor').value,
@@ -727,7 +742,7 @@ async function generateJs() {
     alert('Generation failed: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Generate with Claude';
+    btn.textContent = 'Generate with AI';
   }
 }
 
