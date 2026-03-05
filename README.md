@@ -1,10 +1,10 @@
 # Qualtrics Generative Survey
 
-A locally-hosted web app that uses Claude AI to convert natural-language survey questions into Qualtrics API payloads and submit them directly to your survey. Built with Flask.
+A locally-hosted web app that uses AI (Anthropic Claude or OpenAI GPT-4o) to convert natural-language survey questions into Qualtrics API payloads and submit them directly to your survey. Built with Flask.
 
 ## Features
 
-- **AI-Powered Question Generation** -- Describe your question in plain English and Claude generates the correct Qualtrics API JSON
+- **AI-Powered Question Generation** -- Describe your question in plain English and AI generates the correct Qualtrics API JSON (supports Anthropic Claude and OpenAI GPT-4o)
 - **Batch Support** -- Parse and submit multiple questions at once (separate with `---`)
 - **Survey Overview** -- Browse your survey's blocks and questions in a tree view
 - **Block Management** -- Create, delete, and reorder blocks
@@ -16,7 +16,7 @@ A locally-hosted web app that uses Claude AI to convert natural-language survey 
 
 - Python 3.8+
 - A [Qualtrics](https://www.qualtrics.com/) account with API access
-- An [Anthropic](https://console.anthropic.com/) API key
+- An [Anthropic](https://console.anthropic.com/) API key **or** an [OpenAI](https://platform.openai.com/) API key
 
 ## Setup
 
@@ -61,7 +61,8 @@ You'll need:
 | **Qualtrics API Token** | Qualtrics > Account Settings > Qualtrics IDs |
 | **Data Center** | Select from the dropdown (e.g., `syd1` for Sydney AU) |
 | **Survey ID** | Qualtrics > Account Settings > Qualtrics IDs (starts with `SV_`) |
-| **Anthropic API Key** | [console.anthropic.com](https://console.anthropic.com/) > API Keys |
+| **LLM Provider** | Choose between Anthropic (Claude) or OpenAI (GPT-4o) |
+| **LLM API Key** | [console.anthropic.com](https://console.anthropic.com/) or [platform.openai.com](https://platform.openai.com/) |
 
 ## Usage
 
@@ -81,14 +82,14 @@ You'll need:
    Q3. On a scale of 1-10, how satisfied are you? (slider)
    ```
 
-4. **Parse** -- Click "Parse with Claude" to generate JSON payloads
+4. **Parse** -- Click "Parse with AI" to generate JSON payloads
 5. **Review & Submit** -- Edit the JSON if needed, then submit individually or all at once
 
 ## Project Structure
 
 ```
 qualtrics-generative-survey/
-  app.py                       # Flask backend (routes + Qualtrics/Claude API logic)
+  app.py                       # Flask backend (routes + Qualtrics/LLM API logic)
   templates/
     index.html                 # Single-page frontend
   requirements.txt             # Python dependencies
