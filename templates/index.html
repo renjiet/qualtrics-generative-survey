@@ -114,6 +114,20 @@
   .detail-box .btn-gen-js:hover { background: #d35400; }
   .detail-box .btn-gen-js:disabled { background: #bbb; cursor: not-allowed; }
 
+  /* Question preview */
+  .question-preview { font-size: 0.9em; }
+  .question-preview .qp-text { font-size: 1.05em; margin-bottom: 12px; line-height: 1.5; }
+  .question-preview .qp-choices { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .question-preview .qp-choice { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .question-preview .qp-choice input { flex-shrink: 0; }
+  .question-preview .qp-te { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; }
+  .question-preview .qp-te.multi { min-height: 80px; resize: vertical; }
+  .question-preview .qp-desc { color: #666; font-style: italic; margin-bottom: 8px; font-size: 0.85em; }
+  .question-preview .qp-slider { margin: 12px 0; }
+  .question-preview .qp-slider input[type="range"] { width: 100%; }
+  .question-preview .qp-slider-labels { display: flex; justify-content: space-between; font-size: 0.8em; color: #666; }
+  .question-preview .qp-meta { font-size: 0.75em; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; }
+
   /* Search results */
   .search-results { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #ccc; border-top: none; border-radius: 0 0 4px 4px; max-height: 240px; overflow-y: auto; z-index: 20; display: none; box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
   .search-results.open { display: block; }
@@ -227,8 +241,12 @@
     <button class="close-btn" onclick="closeDetail()">&times;</button>
     <h3 id="detailTitle">Question Detail</h3>
     <div class="tabs">
-      <div class="tab active" onclick="switchDetailTab('json')">JSON</div>
+      <div class="tab active" onclick="switchDetailTab('preview')">Preview</div>
+      <div class="tab" onclick="switchDetailTab('json')">JSON</div>
       <div class="tab" onclick="switchDetailTab('js')">JavaScript</div>
+    </div>
+    <div class="tab-content" id="tab-preview">
+      <div id="questionPreview" class="question-preview"></div>
     </div>
     <div class="tab-content active" id="tab-json">
       <pre id="detailJson"></pre>
@@ -735,7 +753,7 @@ async function showDetail(questionId) {
   json.textContent = '';
   jsEditor.value = '';
   jsStatus.textContent = '';
-  switchDetailTab('json');
+  switchDetailTab('preview');
   overlay.classList.add('open');
 
   const c = getCreds();
@@ -748,14 +766,117 @@ async function showDetail(questionId) {
     title.textContent = questionId + ' - ' + (q.QuestionDescription || q.QuestionText || '').substring(0, 50);
     json.textContent = JSON.stringify(q, null, 2);
     jsEditor.value = q.QuestionJS || '';
+    renderQuestionPreview(q);
   } catch(e) {
     title.textContent = 'Error';
     json.textContent = e.message;
   }
 }
 
+function renderQuestionPreview(q) {
+  const container = document.getElementById('questionPreview');
+  if (!q) { container.innerHTML = '<span class="loading">No data</span>'; return; }
+
+  let html = '';
+  // Question text
+  html += `<div class="qp-text">${q.QuestionText || ''}</div>`;
+
+  const type = q.QuestionType;
+  const sel = q.Selector;
+  const choices = q.Choices || {};
+  const choiceOrder = q.ChoiceOrder || Object.keys(choices);
+
+  if (type === 'MC') {
+    const isMulti = ['MAVR', 'MACOL', 'MAHR', 'MSB'].includes(sel);
+    const inputType = isMulti ? 'checkbox' : 'radio';
+    if (sel === 'DL' || sel === 'SB') {
+      // Dropdown
+      html += '<select class="qp-te" disabled>';
+      html += '<option value="">— Select —</option>';
+      for (const k of choiceOrder) {
+        const c = choices[k];
+        if (c) html += `<option>${c.Display || ''}</option>`;
+      }
+      html += '</select>';
+    } else {
+      // Radio/Checkbox list
+      html += '<ul class="qp-choices">';
+      for (const k of choiceOrder) {
+        const c = choices[k];
+        if (c) html += `<li class="qp-choice"><input type="${inputType}" disabled> ${c.Display || ''}</li>`;
+      }
+      html += '</ul>';
+    }
+  } else if (type === 'TE') {
+    if (sel === 'ML') {
+      html += '<textarea class="qp-te multi" disabled placeholder="Text entry (multi-line)"></textarea>';
+    } else if (sel === 'FORM') {
+      // Form fields
+      for (const k of choiceOrder) {
+        const c = choices[k];
+        if (c) html += `<div style="margin-bottom:6px;"><label style="font-size:0.85em;color:#555;">${c.Display || ''}</label><input class="qp-te" disabled></div>`;
+      }
+    } else {
+      html += '<input class="qp-te" disabled placeholder="Text entry (single line)">';
+    }
+  } else if (type === 'DB') {
+    html += '<div class="qp-desc">Descriptive text — no response collected</div>';
+  } else if (type === 'Slider') {
+    for (const k of choiceOrder) {
+      const c = choices[k];
+      html += '<div class="qp-slider">';
+      if (c) html += `<div style="font-size:0.85em;margin-bottom:4px;">${c.Display || ''}</div>`;
+      html += '<input type="range" min="0" max="100" value="50" disabled>';
+      if (q.Labels) {
+        const lblKeys = Object.keys(q.Labels);
+        html += '<div class="qp-slider-labels">';
+        for (const lk of lblKeys) html += `<span>${q.Labels[lk].Display || ''}</span>`;
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  } else if (type === 'Matrix') {
+    const answers = q.Answers || {};
+    const answerOrder = q.AnswerOrder || Object.keys(answers);
+    html += '<table style="width:100%;border-collapse:collapse;font-size:0.85em;">';
+    html += '<tr><th></th>';
+    for (const ak of answerOrder) {
+      const a = answers[ak];
+      if (a) html += `<th style="padding:4px 8px;text-align:center;font-weight:normal;color:#555;">${a.Display || ''}</th>`;
+    }
+    html += '</tr>';
+    for (const ck of choiceOrder) {
+      const c = choices[ck];
+      if (!c) continue;
+      html += `<tr><td style="padding:4px 8px;">${c.Display || ''}</td>`;
+      for (const ak of answerOrder) {
+        html += '<td style="text-align:center;"><input type="radio" disabled></td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+  } else if (type === 'RO') {
+    html += '<ol class="qp-choices" style="list-style:decimal;padding-left:20px;">';
+    for (const k of choiceOrder) {
+      const c = choices[k];
+      if (c) html += `<li class="qp-choice">${c.Display || ''}</li>`;
+    }
+    html += '</ol>';
+  } else {
+    html += `<div class="qp-desc">Preview not available for ${type}/${sel}</div>`;
+  }
+
+  // Meta info
+  const validation = q.Validation?.Settings || {};
+  const forceResp = validation.ForceResponse === 'ON' ? 'Required' : 'Optional';
+  html += `<div class="qp-meta">${type} / ${sel}${q.SubSelector ? ' / ' + q.SubSelector : ''} · ${forceResp} · ${q.DataExportTag || q.QuestionID}</div>`;
+
+  container.innerHTML = html;
+}
+
 function switchDetailTab(tab) {
   document.querySelectorAll('.detail-box .tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === tab));
+  document.getElementById('tab-preview').classList.toggle('active', tab === 'preview');
   document.getElementById('tab-json').classList.toggle('active', tab === 'json');
   document.getElementById('tab-js').classList.toggle('active', tab === 'js');
 }
