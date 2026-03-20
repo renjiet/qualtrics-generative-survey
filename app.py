@@ -285,6 +285,28 @@ def get_question():
     return jsonify(resp.json())
 
 
+MODIFY_QUESTION_SYSTEM_PROMPT = """You are an API assistant that modifies Qualtrics question JSON payloads.
+
+You will receive:
+1. The current question JSON (from a GET response)
+2. A modification request in plain English
+
+Return ONLY the modified JSON object — no markdown fences, no commentary, no extra text.
+
+Rules:
+- Preserve ALL existing fields unless the modification explicitly changes them.
+- QuestionType: "MC" for multiple choice, "TE" for text entry, "DB" for descriptive text, "Slider" for sliders, "Matrix" for matrix, "RO" for rank order.
+- For MC questions: Use "SAVR" (single answer vertical), "MAVR" (multiple answer vertical), "DL" (dropdown), "SB" (select box) as Selector. SubSelector is "TX".
+- For TE questions: Use "SL" (single line), "ML" (multi line), or "FORM" as Selector. SubSelector MUST be "" (empty string).
+- For DB questions: Use "TB" as Selector. SubSelector MUST be "" (empty string).
+- For Slider questions: Use "HBAR", "HSLIDER", or "STAR" as Selector. SubSelector MUST be null.
+- Keep QuestionDescription and DataExportTag as snake_case variable names. Update them if the question meaning changes significantly.
+- ChoiceOrder must always match the keys in Choices.
+- If adding choices, use the next integer key (e.g., if max key is "4", new choice is "5").
+- If reordering choices, update both Choices and ChoiceOrder.
+- Output ONLY the JSON object. No explanation, no markdown."""
+
+
 JS_SYSTEM_PROMPT = """You are an expert at writing custom JavaScript for Qualtrics surveys.
 
 Qualtrics question JavaScript runs inside the question's addOnload, addOnReady, or addOnUnload handlers. The standard template is:
@@ -416,5 +438,26 @@ def update_flow():
     return jsonify(resp.json())
 
 
+@app.route("/api/modify-question", methods=["POST"])
+def modify_question():
+    data = request.json
+    llm_key = data["llmKey"]
+    llm_provider = data.get("llmProvider", "anthropic")
+    prompt = data["prompt"]
+    question_json = data["questionJson"]
+
+    user_msg = f"Current question JSON:\n{json.dumps(question_json, indent=2)}\n\nModification request: {prompt}"
+
+    try:
+        content = llm_complete(llm_key, llm_provider, MODIFY_QUESTION_SYSTEM_PROMPT, user_msg, max_tokens=4096)
+        content = strip_markdown_fences(content)
+        modified = json.loads(content)
+        return jsonify({"success": True, "questionJson": modified})
+    except json.JSONDecodeError as e:
+        return jsonify({"success": False, "error": f"Invalid JSON from LLM: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)

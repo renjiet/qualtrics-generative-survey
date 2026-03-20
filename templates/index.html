@@ -113,6 +113,13 @@
   .detail-box .btn-gen-js { background: #e67e22; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
   .detail-box .btn-gen-js:hover { background: #d35400; }
   .detail-box .btn-gen-js:disabled { background: #bbb; cursor: not-allowed; }
+  .detail-box .edit-prompt-row { display: flex; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+  .detail-box .edit-prompt-input { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85em; }
+  .detail-box .btn-edit-ai { background: #e67e22; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
+  .detail-box .btn-edit-ai:hover { background: #d35400; }
+  .detail-box .btn-edit-ai:disabled { background: #bbb; cursor: not-allowed; }
+  .detail-box .btn-discard { background: #95a5a6; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; }
+  .detail-box .btn-discard:hover { background: #7f8c8d; }
 
   /* Question preview */
   .question-preview { font-size: 0.9em; }
@@ -247,6 +254,17 @@
     </div>
     <div class="tab-content" id="tab-preview">
       <div id="questionPreview" class="question-preview"></div>
+      <div class="edit-prompt-row">
+        <input class="edit-prompt-input" id="editPromptInput" placeholder="Describe how to modify this question..." onkeydown="if(event.key==='Enter')modifyQuestion()">
+        <button class="btn-edit-ai" id="btnEditAi" onclick="modifyQuestion()">Modify with AI</button>
+      </div>
+      <div id="editPreviewActions" style="display:none;margin-top:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="btn-save-js" onclick="saveModifiedQuestion()">Save to Qualtrics</button>
+          <button class="btn-discard" onclick="discardModification()">Discard</button>
+          <span id="editStatus" class="js-status"></span>
+        </div>
+      </div>
     </div>
     <div class="tab-content active" id="tab-json">
       <pre id="detailJson"></pre>
@@ -936,10 +954,85 @@ async function saveQuestionJs() {
   }
 }
 
+let pendingModifiedData = null;
+
+async function modifyQuestion() {
+  const prompt = document.getElementById('editPromptInput').value.trim();
+  if (!prompt) return alert('Describe how to modify this question');
+  if (!currentDetailData) return alert('No question loaded');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your LLM API key');
+
+  const btn = document.getElementById('btnEditAi');
+  btn.disabled = true;
+  btn.textContent = 'Modifying...';
+
+  try {
+    const data = await apiFetch('/api/modify-question', {
+      llmKey: c.llmKey,
+      llmProvider: c.llmProvider,
+      prompt: prompt,
+      questionJson: currentDetailData,
+    });
+    if (data.success) {
+      pendingModifiedData = data.questionJson;
+      renderQuestionPreview(pendingModifiedData);
+      document.getElementById('editPreviewActions').style.display = '';
+      document.getElementById('editStatus').textContent = 'Preview of changes — Save or Discard';
+      document.getElementById('editStatus').style.color = '#e67e22';
+    } else {
+      alert('Modification failed: ' + data.error);
+    }
+  } catch(e) {
+    alert('Modification failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Modify with AI';
+  }
+}
+
+async function saveModifiedQuestion() {
+  if (!currentDetailQID || !pendingModifiedData) return;
+  const c = getCreds();
+  const update = buildUpdatePayload(pendingModifiedData);
+  const status = document.getElementById('editStatus');
+
+  status.textContent = 'Saving...';
+  status.style.color = '#888';
+  try {
+    await apiFetch('/api/question/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      questionId: currentDetailQID, questionJson: update,
+    });
+    status.textContent = 'Saved!';
+    status.style.color = '#27ae60';
+    currentDetailData = pendingModifiedData;
+    pendingModifiedData = null;
+    document.getElementById('detailJson').textContent = JSON.stringify(currentDetailData, null, 2);
+    document.getElementById('editPromptInput').value = '';
+    document.getElementById('editPreviewActions').style.display = 'none';
+    loadSurvey();
+  } catch(e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.style.color = '#c0392b';
+  }
+}
+
+function discardModification() {
+  pendingModifiedData = null;
+  renderQuestionPreview(currentDetailData);
+  document.getElementById('editPreviewActions').style.display = 'none';
+  document.getElementById('editStatus').textContent = '';
+  document.getElementById('editPromptInput').value = '';
+}
+
 function closeDetail() {
   document.getElementById('detailOverlay').classList.remove('open');
   currentDetailQID = null;
   currentDetailData = null;
+  pendingModifiedData = null;
+  document.getElementById('editPreviewActions').style.display = 'none';
+  document.getElementById('editPromptInput').value = '';
 }
 
 // --- Rename question (QuestionDescription + DataExportTag) ---
