@@ -85,6 +85,9 @@
   .html-preview-section { margin-bottom: 12px; }
   .html-preview-frame { width: 100%; min-height: 200px; border: 1px solid #ddd; border-radius: 4px; background: #fff; }
   .html-code-editor { width: 100%; min-height: 120px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.8em; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: vertical; tab-size: 2; }
+  .embedded-data-info { background: #eaf4fe; border: 1px solid #b3d7f5; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82em; }
+  .embedded-data-info .ed-title { font-weight: 600; margin-bottom: 4px; color: #2c3e50; }
+  .embedded-data-info .ed-field { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; background: #d6eaf8; padding: 1px 5px; border-radius: 3px; }
 
   .preview-panel { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   .preview-item { border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 10px; }
@@ -259,6 +262,7 @@
           <span id="htmlSubmitStatus" class="status"></span>
         </div>
       </div>
+      <div id="htmlEmbeddedDataInfo" class="embedded-data-info" style="display:none;"></div>
       <div class="html-preview-section">
         <label style="font-size:0.85em;font-weight:600;display:block;margin-bottom:4px;">Live Preview</label>
         <iframe id="htmlPreviewFrame" class="html-preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -824,6 +828,7 @@ async function generateHtmlComponent() {
       document.getElementById('htmlCodeEditor').value = data.html;
       document.getElementById('htmlJsEditor').value = data.js;
       updateHtmlPreview(data.html);
+      updateEmbeddedDataInfo(data.js);
       document.getElementById('htmlPreviewPanel').style.display = 'block';
       document.getElementById('htmlSubmitStatus').textContent = '';
     } else {
@@ -835,6 +840,19 @@ async function generateHtmlComponent() {
     btn.disabled = false;
     btn.textContent = 'Generate with AI';
   }
+}
+
+function updateEmbeddedDataInfo(js) {
+  const info = document.getElementById('htmlEmbeddedDataInfo');
+  const matches = [...js.matchAll(/setEmbeddedData\s*\(\s*['"]([^'"]+)['"]/g)];
+  const fields = [...new Set(matches.map(m => m[1]))];
+  if (fields.length === 0) {
+    info.style.display = 'none';
+    return;
+  }
+  info.style.display = '';
+  info.innerHTML = `<div class="ed-title">Embedded Data Fields</div>` +
+    fields.map(f => `<span class="ed-field">${esc(f)}</span>`).join(' ');
 }
 
 function updateHtmlPreview(html) {
@@ -860,6 +878,14 @@ document.addEventListener('DOMContentLoaded', () => {
     editor.addEventListener('input', () => {
       clearTimeout(debounce);
       debounce = setTimeout(() => updateHtmlPreview(editor.value), 300);
+    });
+  }
+  const jsEd = document.getElementById('htmlJsEditor');
+  if (jsEd) {
+    let debounceJs;
+    jsEd.addEventListener('input', () => {
+      clearTimeout(debounceJs);
+      debounceJs = setTimeout(() => updateEmbeddedDataInfo(jsEd.value), 300);
     });
   }
 });
@@ -1045,6 +1071,16 @@ function renderQuestionPreview(q) {
   const validation = q.Validation?.Settings || {};
   const forceResp = validation.ForceResponse === 'ON' ? 'Required' : 'Optional';
   html += `<div class="qp-meta">${type} / ${sel}${q.SubSelector ? ' / ' + q.SubSelector : ''} · ${forceResp} · ${q.DataExportTag || q.QuestionID}</div>`;
+
+  // Show embedded data fields for questions with JS
+  if (q.QuestionJS) {
+    const edMatches = [...q.QuestionJS.matchAll(/setEmbeddedData\s*\(\s*['"]([^'"]+)['"]/g)];
+    const edFields = [...new Set(edMatches.map(m => m[1]))];
+    if (edFields.length) {
+      html += `<div class="embedded-data-info"><div class="ed-title">Embedded Data Fields</div>` +
+        edFields.map(f => `<span class="ed-field">${esc(f)}</span>`).join(' ') + '</div>';
+    }
+  }
 
   container.innerHTML = html;
 }
