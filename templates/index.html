@@ -124,6 +124,12 @@
   .detail-box .btn-gen-js { background: #e67e22; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
   .detail-box .btn-gen-js:hover { background: #d35400; }
   .detail-box .btn-gen-js:disabled { background: #bbb; cursor: not-allowed; }
+  .detail-box .logic-display { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; font-size: 0.85em; min-height: 40px; }
+  .logic-display .logic-condition { padding: 3px 0; }
+  .logic-display .logic-conjunction { color: #e67e22; font-weight: 600; margin: 0 4px; }
+  .logic-display .logic-question { color: #2980b9; font-weight: 600; }
+  .logic-display .logic-choice { color: #27ae60; }
+  .logic-display .logic-operator { color: #8e44ad; }
   .detail-box .edit-prompt-row { display: flex; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
   .detail-box .edit-prompt-input { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85em; }
   .detail-box .btn-edit-ai { background: #e67e22; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; white-space: nowrap; }
@@ -295,6 +301,7 @@
       <div class="tab active" onclick="switchDetailTab('preview')">Preview</div>
       <div class="tab" onclick="switchDetailTab('json')">JSON</div>
       <div class="tab" onclick="switchDetailTab('js')">JavaScript</div>
+      <div class="tab" onclick="switchDetailTab('logic')">Logic</div>
     </div>
     <div class="tab-content" id="tab-preview">
       <div id="questionPreview" class="question-preview"></div>
@@ -322,6 +329,24 @@
       <div style="display:flex;align-items:center;margin-top:8px;">
         <button class="btn-save-js" onclick="saveQuestionJs()">Save JavaScript</button>
         <span id="jsStatus" class="js-status"></span>
+      </div>
+    </div>
+    <div class="tab-content" id="tab-logic">
+      <div id="logicDisplay" class="logic-display">
+        <span class="loading">No display logic set</span>
+      </div>
+      <div class="js-prompt-row">
+        <input class="js-prompt-input" id="logicPromptInput" placeholder="e.g. Show this question only if Q1 answer is 'Yes'..." onkeydown="if(event.key==='Enter')generateDisplayLogic()">
+        <button class="btn-gen-js" id="btnGenLogic" onclick="generateDisplayLogic()">Generate with AI</button>
+      </div>
+      <div id="logicJsonSection" style="display:none;">
+        <label style="font-size:0.85em;font-weight:600;display:block;margin:8px 0 4px;">DisplayLogic JSON</label>
+        <textarea class="js-editor" id="logicJsonEditor" placeholder='{"Type": "BooleanExpression", ...}'></textarea>
+      </div>
+      <div style="display:flex;align-items:center;margin-top:8px;gap:8px;">
+        <button class="btn-save-js" onclick="saveDisplayLogic()">Save Logic</button>
+        <button class="btn-discard" onclick="clearDisplayLogic()">Clear Logic</button>
+        <span id="logicStatus" class="js-status"></span>
       </div>
     </div>
   </div>
@@ -968,6 +993,11 @@ async function showDetail(questionId) {
     json.textContent = JSON.stringify(q, null, 2);
     jsEditor.value = q.QuestionJS || '';
     renderQuestionPreview(q);
+    renderDisplayLogic(q.DisplayLogic);
+    document.getElementById('logicJsonEditor').value = q.DisplayLogic ? JSON.stringify(q.DisplayLogic, null, 2) : '';
+    document.getElementById('logicJsonSection').style.display = q.DisplayLogic ? '' : 'none';
+    document.getElementById('logicPromptInput').value = '';
+    document.getElementById('logicStatus').textContent = '';
   } catch(e) {
     title.textContent = 'Error';
     json.textContent = e.message;
@@ -1090,6 +1120,190 @@ function switchDetailTab(tab) {
   document.getElementById('tab-preview').classList.toggle('active', tab === 'preview');
   document.getElementById('tab-json').classList.toggle('active', tab === 'json');
   document.getElementById('tab-js').classList.toggle('active', tab === 'js');
+  document.getElementById('tab-logic').classList.toggle('active', tab === 'logic');
+}
+
+// --- Display Logic ---
+function renderDisplayLogic(logic) {
+  const container = document.getElementById('logicDisplay');
+  if (!logic || logic.Type !== 'BooleanExpression') {
+    container.innerHTML = '<span class="loading">No display logic set</span>';
+    return;
+  }
+
+  let html = '';
+  // Iterate through numbered groups
+  let groupIdx = 0;
+  while (logic[String(groupIdx)]) {
+    const group = logic[String(groupIdx)];
+    if (groupIdx > 0) {
+      html += '<div class="logic-condition"><span class="logic-conjunction">OR</span></div>';
+    }
+    // Iterate through conditions in group
+    let condIdx = 0;
+    while (group[String(condIdx)]) {
+      const cond = group[String(condIdx)];
+      if (cond.Type === 'Expression') {
+        const conjunction = cond.Conjuction;
+        let line = '';
+        if (condIdx > 0 && conjunction) {
+          line += `<span class="logic-conjunction">${esc(conjunction.toUpperCase())}</span> `;
+        } else if (groupIdx === 0 && condIdx === 0) {
+          line += '<span class="logic-conjunction">If</span> ';
+        }
+        // Question reference
+        const qid = cond.QuestionID || '';
+        const qData = allQuestions[qid];
+        const qName = qData ? (qData.QuestionDescription || qid) : qid;
+        line += `<span class="logic-question">${esc(qName)}</span> `;
+        // Choice / value
+        const operator = cond.Operator || '';
+        if (operator === 'Selected' || operator === 'NotSelected') {
+          // MC — extract choice display
+          const choiceLocator = cond.ChoiceLocator || '';
+          const choiceKeyMatch = choiceLocator.match(/SelectableChoice\/(\d+)/);
+          const choiceKey = choiceKeyMatch ? choiceKeyMatch[1] : '';
+          const choiceDisplay = qData?.Choices?.[choiceKey]?.Display || choiceKey;
+          line += `<span class="logic-choice">"${esc(choiceDisplay)}"</span> `;
+          line += `<span class="logic-operator">${operator === 'Selected' ? 'Is Selected' : 'Is Not Selected'}</span>`;
+        } else {
+          // TE operators
+          const opLabels = {
+            Empty: 'Is Empty', NotEmpty: 'Is Not Empty', EqualTo: 'Is Equal To',
+            NotEqualTo: 'Is Not Equal To', Contains: 'Contains',
+            GreaterThan: 'Is Greater Than', LessThan: 'Is Less Than',
+            GreaterThanOrEqual: 'Is Greater Than or Equal To',
+            LessThanOrEqual: 'Is Less Than or Equal To',
+          };
+          line += `<span class="logic-operator">${esc(opLabels[operator] || operator)}</span>`;
+          if (cond.RightOperand) {
+            line += ` <span class="logic-choice">"${esc(cond.RightOperand)}"</span>`;
+          }
+        }
+        html += `<div class="logic-condition">${line}</div>`;
+      }
+      condIdx++;
+    }
+    groupIdx++;
+  }
+  container.innerHTML = html || '<span class="loading">No display logic set</span>';
+}
+
+function buildQuestionContext() {
+  // Build a compact summary of all questions for the AI
+  const ctx = {};
+  for (const [qid, q] of Object.entries(allQuestions)) {
+    ctx[qid] = {
+      QuestionDescription: q.QuestionDescription,
+      QuestionType: q.QuestionType,
+      QuestionText: (q.QuestionText || '').substring(0, 100),
+      Choices: q.Choices || {},
+    };
+  }
+  return ctx;
+}
+
+async function generateDisplayLogic() {
+  const prompt = document.getElementById('logicPromptInput').value.trim();
+  if (!prompt) return alert('Describe the display logic you want');
+  if (!currentDetailData) return alert('No question loaded');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your LLM API key');
+
+  const btn = document.getElementById('btnGenLogic');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  try {
+    const data = await apiFetch('/api/generate-display-logic', {
+      llmKey: c.llmKey,
+      llmProvider: c.llmProvider,
+      prompt: prompt,
+      surveyQuestions: buildQuestionContext(),
+    });
+    if (data.success) {
+      renderDisplayLogic(data.displayLogic);
+      document.getElementById('logicJsonEditor').value = JSON.stringify(data.displayLogic, null, 2);
+      document.getElementById('logicJsonSection').style.display = '';
+      document.getElementById('logicStatus').textContent = 'Generated — review and Save';
+      document.getElementById('logicStatus').style.color = '#e67e22';
+    } else {
+      alert('Generation failed: ' + data.error);
+    }
+  } catch(e) {
+    alert('Generation failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate with AI';
+  }
+}
+
+async function saveDisplayLogic() {
+  if (!currentDetailQID || !currentDetailData) return;
+  const c = getCreds();
+  const status = document.getElementById('logicStatus');
+  const jsonText = document.getElementById('logicJsonEditor').value.trim();
+
+  let logic;
+  if (jsonText) {
+    try {
+      logic = JSON.parse(jsonText);
+    } catch(e) {
+      status.textContent = 'Invalid JSON';
+      status.style.color = '#c0392b';
+      return;
+    }
+  }
+
+  const update = buildUpdatePayload(currentDetailData);
+  if (logic) update.DisplayLogic = logic;
+
+  status.textContent = 'Saving...';
+  status.style.color = '#888';
+  try {
+    await apiFetch('/api/question/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      questionId: currentDetailQID, questionJson: update,
+    });
+    currentDetailData.DisplayLogic = logic;
+    renderDisplayLogic(logic);
+    document.getElementById('detailJson').textContent = JSON.stringify(currentDetailData, null, 2);
+    status.textContent = 'Saved!';
+    status.style.color = '#27ae60';
+  } catch(e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.style.color = '#c0392b';
+  }
+}
+
+async function clearDisplayLogic() {
+  if (!currentDetailQID || !currentDetailData) return;
+  if (!confirm('Remove display logic from this question?')) return;
+  const c = getCreds();
+  const status = document.getElementById('logicStatus');
+
+  // To clear, we send the update without DisplayLogic
+  const update = buildUpdatePayload(currentDetailData);
+  delete update.DisplayLogic;
+
+  status.textContent = 'Clearing...';
+  status.style.color = '#888';
+  try {
+    await apiFetch('/api/question/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      questionId: currentDetailQID, questionJson: update,
+    });
+    delete currentDetailData.DisplayLogic;
+    renderDisplayLogic(null);
+    document.getElementById('logicJsonEditor').value = '';
+    document.getElementById('logicJsonSection').style.display = 'none';
+    document.getElementById('detailJson').textContent = JSON.stringify(currentDetailData, null, 2);
+    status.textContent = 'Cleared';
+    status.style.color = '#27ae60';
+  } catch(e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.style.color = '#c0392b';
+  }
 }
 
 async function generateJs() {
@@ -1273,6 +1487,7 @@ function buildUpdatePayload(q) {
   if (q.DataExportTag) payload.DataExportTag = q.DataExportTag;
   if (q.RecodeValues) payload.RecodeValues = q.RecodeValues;
   if (q.Randomization) payload.Randomization = q.Randomization;
+  if (q.DisplayLogic) payload.DisplayLogic = q.DisplayLogic;
   return payload;
 }
 

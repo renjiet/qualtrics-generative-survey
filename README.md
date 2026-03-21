@@ -11,6 +11,7 @@ A locally-hosted web app that uses AI (Anthropic Claude or OpenAI GPT-4o) to con
 - **Question Management** -- Reorder questions, move between blocks, rename internal variable names, toggle force response, and delete
 - **AI-Powered Question Editing** -- Modify existing questions by describing changes in plain English (e.g., "add a Not Applicable option", "change to dropdown") with preview before saving
 - **Custom HTML Components** -- Describe a custom UI component in plain English and AI generates both HTML and JavaScript, with a live interactive preview and embedded data field tracking
+- **Display Logic** -- AI-assisted creation of display logic (show/hide questions based on previous answers) with human-readable preview and JSON editor
 - **JavaScript Editor** -- View, edit, and AI-generate custom Qualtrics question JavaScript
 - **Supported Question Types** -- Multiple Choice (MC), Text Entry (TE), Descriptive Text (DB), Slider, and more
 

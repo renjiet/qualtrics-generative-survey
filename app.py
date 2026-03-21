@@ -285,6 +285,71 @@ def get_question():
     return jsonify(resp.json())
 
 
+DISPLAY_LOGIC_SYSTEM_PROMPT = """You are an expert at generating Qualtrics DisplayLogic JSON.
+
+You will receive:
+1. A description of display logic in plain English
+2. A summary of available survey questions (QID, description, type, choices)
+
+Return ONLY a valid DisplayLogic JSON object. No markdown fences, no commentary.
+
+### DisplayLogic structure
+
+The top-level object:
+{
+  "0": { ... group ... },
+  "Type": "BooleanExpression",
+  "inPage": false
+}
+
+Each group has numbered conditions and a Type ("If" for first group, "ElseIf" for subsequent groups used for complex OR with grouping):
+"0": {
+  "0": { ...condition... },
+  "1": { "Conjuction": "And", ...condition... },
+  "Type": "If"
+}
+
+### Condition for MC (multiple choice) questions
+{
+  "ChoiceLocator": "q://QID{n}/SelectableChoice/{choiceKey}",
+  "Description": "<span class=\\"ConjDesc\\">If</span> <span class=\\"QuestionDesc\\">{description}</span> <span class=\\"LeftOpDesc\\">{choiceDisplay}</span> <span class=\\"OpDesc\\">Is Selected</span>",
+  "LeftOperand": "q://QID{n}/SelectableChoice/{choiceKey}",
+  "LogicType": "Question",
+  "Operator": "Selected",
+  "QuestionID": "QID{n}",
+  "QuestionIDFromLocator": "QID{n}",
+  "QuestionIsInLoop": "no",
+  "Type": "Expression"
+}
+MC operators: "Selected", "NotSelected"
+
+### Condition for TE (text entry) questions
+{
+  "ChoiceLocator": "q://QID{n}/ChoiceTextEntryValue",
+  "Description": "<span class=\\"ConjDesc\\">If</span> <span class=\\"QuestionDesc\\">{description}</span> <span class=\\"OpDesc\\">Is Not Empty</span>",
+  "LeftOperand": "q://QID{n}/ChoiceTextEntryValue",
+  "LogicType": "Question",
+  "Operator": "NotEmpty",
+  "QuestionID": "QID{n}",
+  "QuestionIDFromLocator": "QID{n}",
+  "QuestionIsInLoop": "no",
+  "Type": "Expression"
+}
+TE operators: "Empty", "NotEmpty", "EqualTo", "NotEqualTo", "Contains", "GreaterThan", "LessThan", "GreaterThanOrEqual", "LessThanOrEqual"
+Comparison operators require a "RightOperand" field with the value as a string.
+
+### Combining conditions
+- AND: Add "Conjuction": "And" to second+ conditions in the same group (note: "Conjuction" is a Qualtrics typo, NOT "Conjunction")
+- Simple OR: Add "Conjuction": "Or" to second+ conditions in the same group
+- Complex OR with grouping (A AND B) OR C: Use separate groups — first group Type "If", subsequent groups Type "ElseIf"
+
+### Important
+- Use exact QIDs and choice keys from the provided survey context
+- The Description field must use the HTML span format shown above
+- "Conjuction" is intentionally misspelled — Qualtrics requires this exact typo
+- Output ONLY the DisplayLogic JSON object"""
+
+
 HTML_COMPONENT_SYSTEM_PROMPT = """You are an expert at building custom HTML+JS UI components for Qualtrics surveys.
 
 Given a description of a custom UI component, generate a JSON object with two fields:
@@ -454,6 +519,40 @@ def update_flow():
     if resp.status_code != 200:
         return jsonify({"error": resp.text}), resp.status_code
     return jsonify(resp.json())
+
+
+@app.route("/api/generate-display-logic", methods=["POST"])
+def generate_display_logic():
+    data = request.json
+    llm_key = data["llmKey"]
+    llm_provider = data.get("llmProvider", "anthropic")
+    prompt = data["prompt"]
+    survey_questions = data.get("surveyQuestions", {})
+
+    # Build survey context for the LLM
+    context_lines = ["Available survey questions:"]
+    for qid, q in survey_questions.items():
+        desc = q.get("QuestionDescription", "")
+        qtype = q.get("QuestionType", "")
+        qtext = q.get("QuestionText", "")[:80]
+        line = f"- {qid} ({qtype}): {desc} — \"{qtext}\""
+        choices = q.get("Choices", {})
+        if choices:
+            choice_parts = [f"  {k}: \"{c.get('Display', '')}\"" for k, c in choices.items()]
+            line += "\n  Choices: " + ", ".join(choice_parts)
+        context_lines.append(line)
+
+    user_msg = "\n".join(context_lines) + f"\n\nDisplay logic request: {prompt}"
+
+    try:
+        content = llm_complete(llm_key, llm_provider, DISPLAY_LOGIC_SYSTEM_PROMPT, user_msg, max_tokens=4096)
+        content = strip_markdown_fences(content)
+        logic = json.loads(content)
+        return jsonify({"success": True, "displayLogic": logic})
+    except json.JSONDecodeError as e:
+        return jsonify({"success": False, "error": f"Invalid JSON from LLM: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @app.route("/api/generate-html", methods=["POST"])
