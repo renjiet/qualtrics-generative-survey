@@ -285,6 +285,24 @@ def get_question():
     return jsonify(resp.json())
 
 
+HTML_COMPONENT_SYSTEM_PROMPT = """You are an expert at building custom HTML+JS UI components for Qualtrics surveys.
+
+Given a description of a custom UI component, generate a JSON object with two fields:
+1. "html" — The HTML markup for the component. This will go into QuestionText of a DB (Descriptive Text) question.
+2. "js" — The Qualtrics JavaScript that wires up the component. It must capture user input and save values using Qualtrics.SurveyEngine.setEmbeddedData('field_name', value).
+
+Rules:
+- The HTML should be self-contained with inline styles. Do not use external CSS frameworks.
+- Use clean, readable HTML. Use <div>, <input>, <select>, <button>, <table> etc. as appropriate.
+- The JS must use Qualtrics.SurveyEngine.addOnReady(function() { ... }) as the wrapper.
+- Inside the JS, use `this.getQuestionContainer()` to scope DOM queries to the current question.
+- Save values to embedded data using `Qualtrics.SurveyEngine.setEmbeddedData(field, value)`.
+- If the user specifies embedded data field names, use them exactly. Otherwise, infer sensible snake_case names.
+- jQuery is available as `jQuery` (not `$`).
+- The component should work within a Qualtrics survey page (no external dependencies).
+- Output ONLY a JSON object with "html" and "js" keys. No markdown fences, no commentary."""
+
+
 MODIFY_QUESTION_SYSTEM_PROMPT = """You are an API assistant that modifies Qualtrics question JSON payloads.
 
 You will receive:
@@ -436,6 +454,24 @@ def update_flow():
     if resp.status_code != 200:
         return jsonify({"error": resp.text}), resp.status_code
     return jsonify(resp.json())
+
+
+@app.route("/api/generate-html", methods=["POST"])
+def generate_html():
+    data = request.json
+    llm_key = data["llmKey"]
+    llm_provider = data.get("llmProvider", "anthropic")
+    prompt = data["prompt"]
+
+    try:
+        content = llm_complete(llm_key, llm_provider, HTML_COMPONENT_SYSTEM_PROMPT, prompt, max_tokens=4096)
+        content = strip_markdown_fences(content)
+        result = json.loads(content)
+        return jsonify({"success": True, "html": result.get("html", ""), "js": result.get("js", "")})
+    except json.JSONDecodeError as e:
+        return jsonify({"success": False, "error": f"Invalid JSON from LLM: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @app.route("/api/modify-question", methods=["POST"])

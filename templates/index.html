@@ -77,6 +77,14 @@
   .btn-parse:hover { background: #d35400; }
   .btn-parse:disabled { background: #bbb; cursor: not-allowed; }
   .hint { font-size: 0.75em; color: #888; margin-top: 4px; }
+  .creator-tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 2px solid #ddd; }
+  .creator-tab { padding: 6px 16px; cursor: pointer; font-size: 0.9em; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #888; }
+  .creator-tab.active { color: #2c3e50; border-bottom-color: #e67e22; }
+  .creator-tab:hover { color: #2c3e50; }
+  .html-preview-panel { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .html-preview-section { margin-bottom: 12px; }
+  .html-preview-frame { width: 100%; min-height: 200px; border: 1px solid #ddd; border-radius: 4px; background: #fff; }
+  .html-code-editor { width: 100%; min-height: 120px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.8em; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: vertical; tab-size: 2; }
 
   .preview-panel { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   .preview-item { border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 10px; }
@@ -221,16 +229,48 @@
 
   <div class="content">
     <div class="creator">
-      <h2>Create Questions</h2>
+      <div class="creator-tabs">
+        <div class="creator-tab active" onclick="switchCreatorMode('question')">Create Questions</div>
+        <div class="creator-tab" onclick="switchCreatorMode('html')">Custom HTML</div>
+      </div>
       <div class="block-selector">
         <label style="font-size:0.85em;">Target Block:</label>
         <select id="blockSelect"><option value="">-- connect first --</option></select>
         <input type="text" id="newBlockName" placeholder="New block name...">
         <button class="btn-new-block" onclick="createBlock()">+ Block</button>
       </div>
-      <textarea class="question-input" id="questionInput" placeholder="Paste your question(s) here. Separate multiple questions with ---"></textarea>
-      <div class="hint">Separate multiple questions with --- on its own line. Supports MC, TE, and DB question types.</div>
-      <button class="btn-parse" id="btnParse" onclick="parseQuestions()">Parse with AI</button>
+      <div id="creatorQuestion">
+        <textarea class="question-input" id="questionInput" placeholder="Paste your question(s) here. Separate multiple questions with ---"></textarea>
+        <div class="hint">Separate multiple questions with --- on its own line. Supports MC, TE, and DB question types.</div>
+        <button class="btn-parse" id="btnParse" onclick="parseQuestions()">Parse with AI</button>
+      </div>
+      <div id="creatorHtml" style="display:none;">
+        <textarea class="question-input" id="htmlPromptInput" placeholder="Describe the UI component you want, e.g.&#10;&#10;Two side-by-side text boxes for 'years' and 'months' of experience. Save to embedded data fields experience_years and experience_months.&#10;&#10;A 5-star rating with hover effects. Save to embedded data field star_rating."></textarea>
+        <div class="hint">Describe a custom UI component. Specify embedded data field names or let AI infer them.</div>
+        <button class="btn-parse" id="btnGenHtml" onclick="generateHtmlComponent()">Generate with AI</button>
+      </div>
+    </div>
+
+    <div class="html-preview-panel" id="htmlPreviewPanel" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h2>HTML Component Preview</h2>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-submit" onclick="submitHtmlComponent()">Submit to Qualtrics</button>
+          <span id="htmlSubmitStatus" class="status"></span>
+        </div>
+      </div>
+      <div class="html-preview-section">
+        <label style="font-size:0.85em;font-weight:600;display:block;margin-bottom:4px;">Live Preview</label>
+        <iframe id="htmlPreviewFrame" class="html-preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+      </div>
+      <div class="html-preview-section">
+        <label style="font-size:0.85em;font-weight:600;display:block;margin-bottom:4px;">HTML (QuestionText)</label>
+        <textarea class="html-code-editor" id="htmlCodeEditor"></textarea>
+      </div>
+      <div class="html-preview-section">
+        <label style="font-size:0.85em;font-weight:600;display:block;margin-bottom:4px;">JavaScript (QuestionJS)</label>
+        <textarea class="html-code-editor" id="htmlJsEditor"></textarea>
+      </div>
     </div>
 
     <div class="preview-panel" id="previewPanel" style="display:none;">
@@ -752,6 +792,123 @@ async function submitAll() {
     await submitOne(i);
   }
   loadSurvey();
+}
+
+// --- Creator mode toggle ---
+function switchCreatorMode(mode) {
+  document.querySelectorAll('.creator-tab').forEach((t, i) => {
+    t.classList.toggle('active', (mode === 'question' && i === 0) || (mode === 'html' && i === 1));
+  });
+  document.getElementById('creatorQuestion').style.display = mode === 'question' ? '' : 'none';
+  document.getElementById('creatorHtml').style.display = mode === 'html' ? '' : 'none';
+}
+
+// --- Custom HTML component generation ---
+async function generateHtmlComponent() {
+  const prompt = document.getElementById('htmlPromptInput').value.trim();
+  if (!prompt) return alert('Describe the UI component you want');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your LLM API key');
+
+  const btn = document.getElementById('btnGenHtml');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  try {
+    const data = await apiFetch('/api/generate-html', {
+      llmKey: c.llmKey,
+      llmProvider: c.llmProvider,
+      prompt: prompt,
+    });
+    if (data.success) {
+      document.getElementById('htmlCodeEditor').value = data.html;
+      document.getElementById('htmlJsEditor').value = data.js;
+      updateHtmlPreview(data.html);
+      document.getElementById('htmlPreviewPanel').style.display = 'block';
+      document.getElementById('htmlSubmitStatus').textContent = '';
+    } else {
+      alert('Generation failed: ' + data.error);
+    }
+  } catch(e) {
+    alert('Generation failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate with AI';
+  }
+}
+
+function updateHtmlPreview(html) {
+  const frame = document.getElementById('htmlPreviewFrame');
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open();
+  doc.write(`<!DOCTYPE html><html><head><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:12px;font-size:14px;}</style></head><body>${html}</body></html>`);
+  doc.close();
+  // Auto-resize iframe to content height
+  setTimeout(() => {
+    try {
+      const h = doc.documentElement.scrollHeight;
+      frame.style.height = Math.max(100, Math.min(h + 20, 500)) + 'px';
+    } catch(e) {}
+  }, 100);
+}
+
+// Update preview when HTML is manually edited
+document.addEventListener('DOMContentLoaded', () => {
+  const editor = document.getElementById('htmlCodeEditor');
+  if (editor) {
+    let debounce;
+    editor.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => updateHtmlPreview(editor.value), 300);
+    });
+  }
+});
+
+async function submitHtmlComponent() {
+  const html = document.getElementById('htmlCodeEditor').value.trim();
+  const js = document.getElementById('htmlJsEditor').value.trim();
+  if (!html) return alert('No HTML to submit');
+
+  const c = getCreds();
+  const blockId = document.getElementById('blockSelect').value;
+  const status = document.getElementById('htmlSubmitStatus');
+  status.textContent = 'Submitting...';
+  status.className = 'status';
+
+  const qJson = {
+    QuestionText: html,
+    QuestionType: 'DB',
+    Selector: 'TB',
+    Configuration: {
+      QuestionDescriptionOption: 'SpecifyLabel',
+      TextPosition: 'inline',
+      ChoiceColumnWidth: 25,
+      RepeatHeaders: 'none',
+      WhiteSpace: 'OFF',
+      LabelPosition: 'SIDE',
+      NumColumns: 1,
+      MobileFirst: true,
+    },
+    Language: [],
+    QuestionDescription: 'custom_html_component',
+    DataExportTag: 'custom_html_component',
+    Validation: { Settings: { ForceResponse: 'OFF', ForceResponseType: 'OFF', Type: 'None' } },
+  };
+  if (js) qJson.QuestionJS = js;
+
+  try {
+    const data = await apiFetch('/api/submit', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: blockId || null, questionJson: qJson,
+    });
+    const qid = data.result?.QuestionID || 'OK';
+    status.textContent = `Success (${qid})`;
+    status.className = 'status success';
+    loadSurvey();
+  } catch(e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.className = 'status error';
+  }
 }
 
 // --- Show question detail ---
