@@ -44,9 +44,9 @@ The JSON must include ALL of these fields:
 Rules:
 - QuestionType: Use "MC" for multiple choice, "TE" for text entry, "DB" for descriptive text/graphic.
 - For MC questions: Use "SAVR" (single answer vertical) or "MAVR" (multiple answer vertical) as Selector. Use "TX" as SubSelector.
-- For TE questions: Use "SL" (single line), "ML" (multi line), or "FORM" as Selector. SubSelector MUST be "" (empty string) for TE questions — never use "TX". Omit Choices and ChoiceOrder.
-- For DB questions: Use "TB" as Selector. SubSelector MUST be "" (empty string) for DB questions. Omit Choices and ChoiceOrder.
-- For Slider questions: QuestionType is "Slider". Use "HBAR" (horizontal bar), "HSLIDER" (horizontal slider), or "STAR" (star rating) as Selector. SubSelector MUST be null (JSON null, not a string). Use Choices to define the slider labels/items (e.g. {"1": {"Display": "Item 1"}}). Include ChoiceOrder. Include a "Labels" object if the user specifies endpoint labels, e.g. {"Labels": {"1": {"Display": "Not at all"}, "2": {"Display": "Extremely"}}}.
+- For TE questions: Use "SL" (single line), "ML" (multi line), or "FORM" as Selector. Do NOT include SubSelector at all for TE questions — omit it entirely. Omit Choices and ChoiceOrder.
+- For DB questions: Use "TB" as Selector. Do NOT include SubSelector at all for DB questions — omit it entirely. Omit Choices and ChoiceOrder.
+- For Slider questions: QuestionType is "Slider". Use "HBAR" (horizontal bar), "HSLIDER" (horizontal slider), or "STAR" (star rating) as Selector. Do NOT include SubSelector at all for Slider questions — omit it entirely. Use Choices to define the slider labels/items (e.g. {"1": {"Display": "Item 1"}}). Include ChoiceOrder. Include a "Labels" object if the user specifies endpoint labels, e.g. {"Labels": {"1": {"Display": "Not at all"}, "2": {"Display": "Extremely"}}}.
 - QuestionDescription and DataExportTag should be a short snake_case variable name capturing the question's meaning.
 - If the user specifies choice values or variable names, use them exactly.
 - If the user specifies recode values (numbers in parentheses after choices), include a RecodeValues object mapping choice keys to those values.
@@ -380,9 +380,9 @@ Rules:
 - Preserve ALL existing fields unless the modification explicitly changes them.
 - QuestionType: "MC" for multiple choice, "TE" for text entry, "DB" for descriptive text, "Slider" for sliders, "Matrix" for matrix, "RO" for rank order.
 - For MC questions: Use "SAVR" (single answer vertical), "MAVR" (multiple answer vertical), "DL" (dropdown), "SB" (select box) as Selector. SubSelector is "TX".
-- For TE questions: Use "SL" (single line), "ML" (multi line), or "FORM" as Selector. SubSelector MUST be "" (empty string).
-- For DB questions: Use "TB" as Selector. SubSelector MUST be "" (empty string).
-- For Slider questions: Use "HBAR", "HSLIDER", or "STAR" as Selector. SubSelector MUST be null.
+- For TE questions: Use "SL" (single line), "ML" (multi line), or "FORM" as Selector. Do NOT include SubSelector — omit it entirely.
+- For DB questions: Use "TB" as Selector. Do NOT include SubSelector — omit it entirely.
+- For Slider questions: Use "HBAR", "HSLIDER", or "STAR" as Selector. Do NOT include SubSelector — omit it entirely.
 - Keep QuestionDescription and DataExportTag as snake_case variable names. Update them if the question meaning changes significantly.
 - ChoiceOrder must always match the keys in Choices.
 - If adding choices, use the next integer key (e.g., if max key is "4", new choice is "5").

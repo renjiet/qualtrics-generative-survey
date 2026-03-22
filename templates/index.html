@@ -41,6 +41,23 @@
   .sidebar .block-header .collapse-arrow.collapsed { transform: rotate(-90deg); }
   .sidebar .block-questions { overflow: hidden; }
   .sidebar .block-questions.collapsed { display: none; }
+  .sidebar .ed-section { margin-top: 10px; border-top: 1px solid #ddd; padding-top: 8px; }
+  .sidebar .ed-header { display: flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 0.82em; font-weight: 600; color: #555; cursor: pointer; }
+  .sidebar .ed-header .collapse-arrow { font-size: 0.7em; transition: transform 0.15s; }
+  .sidebar .ed-header .collapse-arrow.collapsed { transform: rotate(-90deg); }
+  .sidebar .ed-header .ed-count { font-size: 0.75em; opacity: 0.6; font-weight: normal; margin-left: auto; }
+  .sidebar .ed-list { font-size: 0.8em; }
+  .sidebar .ed-list.collapsed { display: none; }
+  .sidebar .ed-item { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 3px; }
+  .sidebar .ed-item:hover { background: #f0f0f0; }
+  .sidebar .ed-item .ed-name { flex: 1; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .ed-item .ed-val { font-size: 0.8em; color: #888; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .ed-item .ed-type { font-size: 0.7em; color: #aaa; }
+  .sidebar .btn-add-ed { background: none; border: 1px dashed #bbb; color: #888; width: 100%; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 0.78em; margin-top: 2px; text-align: left; }
+  .sidebar .ed-item.js-only { background: #fff8e1; }
+  .sidebar .ed-item .ed-source { font-size: 0.65em; color: #e67e22; font-weight: 600; }
+  .sidebar .ed-item .ed-source.flow { color: #27ae60; }
+  .sidebar .btn-add-ed:hover { border-color: #888; color: #555; background: #f9f9f9; }
   .sidebar .trash-divider { border-top: 1px dashed #ccc; margin: 12px 0 6px; }
   .sidebar .trash-block .block-header.trash { background: #7f8c8d; cursor: default; }
   .sidebar .trash-block .trash-question { background: #f4f0f0; opacity: 0.7; }
@@ -502,11 +519,287 @@ function renderSidebar() {
   for (const block of regularBlocks) {
     html += renderBlockHtml(block, false);
   }
+
+  // Embedded Data section
+  html += renderEmbeddedDataSection();
+
   if (trashBlock) {
     html += '<div class="trash-divider"></div>';
     html += renderBlockHtml(trashBlock, true);
   }
   container.innerHTML = html;
+}
+
+// --- Embedded Data ---
+let edCollapsed = false;
+
+function getEmbeddedDataFromFlow() {
+  if (!surveyFlow || !surveyFlow.Flow) return [];
+  const fields = [];
+  for (const elem of surveyFlow.Flow) {
+    if (elem.Type === 'EmbeddedData' && elem.EmbeddedData) {
+      for (const ed of elem.EmbeddedData) {
+        fields.push({
+          field: ed.Field || ed.Description || '',
+          value: ed.Value || '',
+          type: ed.VariableType || 'String',
+          flowId: elem.FlowID,
+        });
+      }
+    }
+  }
+  return fields;
+}
+
+function getEmbeddedDataFromJs() {
+  // Scan all questions' JS for setEmbeddedData calls
+  const jsFields = new Set();
+  for (const [qid, q] of Object.entries(allQuestions)) {
+    if (q.QuestionJS) {
+      const matches = [...q.QuestionJS.matchAll(/setEmbeddedData\s*\(\s*['"]([^'"]+)['"]/g)];
+      for (const m of matches) jsFields.add(m[1]);
+    }
+  }
+  return jsFields;
+}
+
+function renderEmbeddedDataSection() {
+  const flowFields = getEmbeddedDataFromFlow();
+  const jsFields = getEmbeddedDataFromJs();
+  const flowFieldNames = new Set(flowFields.map(f => f.field));
+
+  // JS-only fields (not declared in flow)
+  const jsOnlyFields = [...jsFields].filter(f => !flowFieldNames.has(f));
+
+  const totalCount = flowFields.length + jsOnlyFields.length;
+  const arrowClass = edCollapsed ? 'collapse-arrow collapsed' : 'collapse-arrow';
+  let html = `<div class="ed-section">
+    <div class="ed-header" onclick="toggleEdSection()">
+      <span class="${arrowClass}">&#9660;</span>
+      Embedded Data
+      <span class="ed-count">${totalCount} field${totalCount !== 1 ? 's' : ''}</span>
+    </div>
+    <div class="ed-list ${edCollapsed ? 'collapsed' : ''}">`;
+
+  // Flow-declared fields
+  for (let i = 0; i < flowFields.length; i++) {
+    const f = flowFields[i];
+    const inJs = jsFields.has(f.field);
+    html += `<div class="ed-item">
+      <span class="ed-name" title="${esc(f.field)}">${esc(f.field)}</span>
+      <button class="sb" onclick="editEmbeddedField(${i})" title="Edit">&#9998;</button>
+      ${f.value ? `<span class="ed-val" title="${esc(f.value)}">${esc(f.value)}</span>` : ''}
+      <span class="ed-source flow" title="Declared in survey flow${inJs ? ' + set in JS' : ''}">${inJs ? 'FLOW+JS' : 'FLOW'}</span>
+      <button class="sb danger" onclick="removeEmbeddedField(${i})" title="Remove">&times;</button>
+    </div>`;
+  }
+
+  // JS-only fields (not in flow — may not export)
+  for (const field of jsOnlyFields) {
+    html += `<div class="ed-item js-only">
+      <span class="ed-name" title="${esc(field)}">${esc(field)}</span>
+      <button class="sb" onclick="editJsOnlyField('${esc(field)}')" title="Rename everywhere">&#9998;</button>
+      <span class="ed-source" title="Set in JS but not declared in flow — may not export">JS ONLY</span>
+      <button class="sb" onclick="addJsFieldToFlow('${esc(field)}')" title="Add to flow">+</button>
+    </div>`;
+  }
+
+  html += `<button class="btn-add-ed" onclick="addEmbeddedField()">+ Add Field</button>`;
+  html += '</div></div>';
+  return html;
+}
+
+function toggleEdSection() {
+  edCollapsed = !edCollapsed;
+  renderSidebar();
+}
+
+function findOrCreateEdFlowElement() {
+  // Find existing EmbeddedData element in flow, or create one
+  if (!surveyFlow || !surveyFlow.Flow) return null;
+  let edElem = surveyFlow.Flow.find(e => e.Type === 'EmbeddedData');
+  if (!edElem) {
+    // Create new EmbeddedData element at the start of flow
+    const maxFlowId = surveyFlow.Flow.reduce((max, e) => {
+      const num = parseInt((e.FlowID || '').replace('FL_', ''));
+      return num > max ? num : max;
+    }, 0);
+    edElem = {
+      Type: 'EmbeddedData',
+      FlowID: 'FL_' + (maxFlowId + 1),
+      EmbeddedData: [],
+    };
+    surveyFlow.Flow.unshift(edElem);
+  }
+  return edElem;
+}
+
+async function saveFlowAndRefresh() {
+  const c = getCreds();
+  await apiFetch('/api/flow/update', {
+    apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, flowData: surveyFlow,
+  });
+  await loadSurvey();
+}
+
+async function addEmbeddedField() {
+  const name = prompt('Embedded data field name:');
+  if (!name) return;
+  const value = prompt('Default value (leave blank for none):', '') || '';
+
+  const edElem = findOrCreateEdFlowElement();
+  if (!edElem) return alert('Could not access survey flow');
+
+  edElem.EmbeddedData.push({
+    Description: name,
+    Type: 'Custom',
+    Field: name,
+    VariableType: 'String',
+    DataVisibility: [],
+    AnalyzeText: false,
+    Value: value,
+  });
+
+  try {
+    await saveFlowAndRefresh();
+  } catch(e) {
+    alert('Failed to add field: ' + e.message);
+  }
+}
+
+async function renameEmbeddedFieldEverywhere(oldName, newName) {
+  const c = getCreds();
+  const updates = [];
+
+  // Find all questions that reference the old name in JS or QuestionText
+  for (const [qid, q] of Object.entries(allQuestions)) {
+    let needsUpdate = false;
+    const fullData = await apiFetch('/api/question/get', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: qid,
+    });
+    const qData = fullData.result;
+    const update = buildUpdatePayload(qData);
+
+    // Check QuestionJS
+    if (qData.QuestionJS && qData.QuestionJS.includes(oldName)) {
+      update.QuestionJS = qData.QuestionJS
+        .replace(new RegExp(`setEmbeddedData\\s*\\(\\s*'${oldName}'`, 'g'), `setEmbeddedData('${newName}'`)
+        .replace(new RegExp(`setEmbeddedData\\s*\\(\\s*"${oldName}"`, 'g'), `setEmbeddedData("${newName}"`);
+      needsUpdate = true;
+    }
+
+    // Check QuestionText for piped text ${e://Field/oldName}
+    if (update.QuestionText && update.QuestionText.includes(oldName)) {
+      update.QuestionText = update.QuestionText
+        .replace(new RegExp(`\\$\\{e://Field/${oldName}\\}`, 'g'), `\${e://Field/${newName}}`);
+      needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+      updates.push(apiFetch('/api/question/update', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+        questionId: qid, questionJson: update,
+      }));
+    }
+  }
+
+  if (updates.length) await Promise.all(updates);
+}
+
+async function editEmbeddedField(idx) {
+  const fields = getEmbeddedDataFromFlow();
+  const f = fields[idx];
+  if (!f) return;
+
+  const newName = prompt('Field name:', f.field);
+  if (newName === null || newName === f.field) return;
+
+  // Update in flow
+  let fieldIdx = 0;
+  for (const elem of surveyFlow.Flow) {
+    if (elem.Type === 'EmbeddedData' && elem.EmbeddedData) {
+      for (let i = 0; i < elem.EmbeddedData.length; i++) {
+        if (fieldIdx === idx) {
+          elem.EmbeddedData[i].Field = newName;
+          elem.EmbeddedData[i].Description = newName;
+          break;
+        }
+        fieldIdx++;
+      }
+    }
+  }
+
+  try {
+    await saveFlowAndRefresh();
+    // Rename across all question JS and piped text
+    await renameEmbeddedFieldEverywhere(f.field, newName);
+    await loadSurvey();
+  } catch(e) {
+    alert('Failed to rename field: ' + e.message);
+  }
+}
+
+async function editJsOnlyField(oldName) {
+  const newName = prompt('Rename field everywhere:', oldName);
+  if (newName === null || newName === oldName) return;
+
+  try {
+    await renameEmbeddedFieldEverywhere(oldName, newName);
+    await loadSurvey();
+  } catch(e) {
+    alert('Failed to rename field: ' + e.message);
+  }
+}
+
+async function removeEmbeddedField(idx) {
+  const fields = getEmbeddedDataFromFlow();
+  const f = fields[idx];
+  if (!f) return;
+  if (!confirm('Remove embedded data field "' + f.field + '"?')) return;
+
+  let fieldIdx = 0;
+  for (const elem of surveyFlow.Flow) {
+    if (elem.Type === 'EmbeddedData' && elem.EmbeddedData) {
+      for (let i = 0; i < elem.EmbeddedData.length; i++) {
+        if (fieldIdx === idx) {
+          elem.EmbeddedData.splice(i, 1);
+          // Remove the flow element entirely if no fields left
+          if (elem.EmbeddedData.length === 0) {
+            const flowIdx = surveyFlow.Flow.indexOf(elem);
+            if (flowIdx !== -1) surveyFlow.Flow.splice(flowIdx, 1);
+          }
+          try {
+            await saveFlowAndRefresh();
+          } catch(e) {
+            alert('Failed to remove field: ' + e.message);
+          }
+          return;
+        }
+        fieldIdx++;
+      }
+    }
+  }
+}
+
+async function addJsFieldToFlow(fieldName) {
+  const edElem = findOrCreateEdFlowElement();
+  if (!edElem) return alert('Could not access survey flow');
+
+  edElem.EmbeddedData.push({
+    Description: fieldName,
+    Type: 'Custom',
+    Field: fieldName,
+    VariableType: 'String',
+    DataVisibility: [],
+    AnalyzeText: false,
+    Value: '',
+  });
+
+  try {
+    await saveFlowAndRefresh();
+  } catch(e) {
+    alert('Failed to add field to flow: ' + e.message);
+  }
 }
 
 function renderBlockSelect() {
@@ -1499,8 +1792,9 @@ function buildUpdatePayload(q) {
     Selector: q.Selector,
     Validation: q.Validation || { Settings: { ForceResponse: 'OFF', ForceResponseType: 'OFF', Type: 'None' } },
   };
-  // Only include SubSelector if the question has one (Slider questions don't)
-  if ('SubSelector' in q) {
+  // Only include SubSelector for question types that use it (MC). TE, DB, Slider don't.
+  const noSubSelector = ['TE', 'DB', 'Slider'];
+  if ('SubSelector' in q && !noSubSelector.includes(q.QuestionType) && q.SubSelector) {
     payload.SubSelector = q.SubSelector;
   }
   if (q.DataExportTag) payload.DataExportTag = q.DataExportTag;
