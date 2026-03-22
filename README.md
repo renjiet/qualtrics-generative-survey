@@ -8,7 +8,8 @@ A locally-hosted web app that uses AI (Anthropic Claude or OpenAI GPT-4o) to con
 - **Batch Support** -- Parse and submit multiple questions at once (separate with `---`)
 - **Survey Overview** -- Browse your survey's blocks and questions in a tree view
 - **Block Management** -- Create, delete, and reorder blocks
-- **Question Management** -- Reorder questions, move between blocks, rename internal variable names, toggle force response, and delete
+- **Question Management** -- Reorder questions, move between blocks, rename internal variable names, toggle force response, duplicate, and soft-delete (moves to Trash, matching Qualtrics UI behavior)
+- **Duplicate Questions & Blocks** -- Clone individual questions or entire blocks with all their questions
 - **AI-Powered Question Editing** -- Modify existing questions by describing changes in plain English (e.g., "add a Not Applicable option", "change to dropdown") with preview before saving
 - **Custom HTML Components** -- Describe a custom UI component in plain English and AI generates both HTML and JavaScript, with a live interactive preview and embedded data field tracking
 - **Display Logic** -- AI-assisted creation of display logic (show/hide questions based on previous answers) with human-readable preview and JSON editor

@@ -41,6 +41,10 @@
   .sidebar .block-header .collapse-arrow.collapsed { transform: rotate(-90deg); }
   .sidebar .block-questions { overflow: hidden; }
   .sidebar .block-questions.collapsed { display: none; }
+  .sidebar .trash-divider { border-top: 1px dashed #ccc; margin: 12px 0 6px; }
+  .sidebar .trash-block .block-header.trash { background: #7f8c8d; cursor: default; }
+  .sidebar .trash-block .trash-question { background: #f4f0f0; opacity: 0.7; }
+  .sidebar .trash-block .trash-question:hover { opacity: 1; }
   .sidebar .question-item { padding: 4px 8px; margin: 2px 0; background: #f9f9f9; border-radius: 3px; font-size: 0.8em; cursor: pointer; display: flex; align-items: center; border: 1px solid transparent; gap: 3px; }
   .sidebar .question-item:hover { background: #eef; border-color: #aac; }
   .sidebar .question-item .q-info { flex: 1; overflow: hidden; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -52,6 +56,7 @@
   /* Small icon buttons in sidebar */
   .sb { background: none; border: none; cursor: pointer; font-size: 0.8em; padding: 1px 3px; flex-shrink: 0; opacity: 0.7; color: inherit; }
   .sb:hover { opacity: 1; }
+  .sb.dup { font-size: 1.1em; }
   .sb.danger { color: #c0392b; }
   .sb.danger:hover { color: #e74c3c; }
 
@@ -439,53 +444,67 @@ async function loadSurvey() {
 }
 
 // --- Render sidebar ---
+function renderBlockHtml(block, isTrash) {
+  const isCollapsed = collapsedBlocks.has(block.BlockID);
+  const arrowClass = isCollapsed ? 'collapse-arrow collapsed' : 'collapse-arrow';
+  const headerClass = isTrash ? 'block-header trash' : 'block-header';
+  let html = `<div class="block-item${isTrash ? ' trash-block' : ''}" data-block-id="${block.BlockID}">
+    <div class="${headerClass}" ${isTrash ? '' : `draggable="true"
+      ondragstart="blockDragStart(event,'${block.BlockID}')"
+      ondragover="blockDragOver(event)" ondragleave="clearDragIndicators(this)"
+      ondrop="blockDrop(event,'${block.BlockID}')" ondragend="dragEnd(event)"`}>
+      <span class="${arrowClass}" onclick="toggleBlock('${block.BlockID}')">&#9660;</span>
+      <span class="block-name" onclick="toggleBlock('${block.BlockID}')">${isTrash ? '&#128465; ' : ''}${esc(block.Description || block.BlockID)}</span>
+      <span class="block-count">${block.QuestionCount}Q</span>
+      ${isTrash ? '' : `<button class="sb dup" onclick="event.stopPropagation();duplicateBlock('${block.BlockID}')" title="Duplicate block">&#x2398;</button>
+      <button class="sb danger" onclick="event.stopPropagation();deleteBlock('${block.BlockID}','${esc(block.Description)}')" title="Delete block">&times;</button>`}
+    </div>
+    <div class="block-questions ${isCollapsed ? 'collapsed' : ''}" id="bq-${block.BlockID}"
+      ondragover="qContainerDragOver(event)" ondragleave="this.classList.remove('drag-over-empty')"
+      ondrop="qContainerDrop(event,'${block.BlockID}')" data-block-id="${block.BlockID}">`;
+  for (let qi = 0; qi < block.Questions.length; qi++) {
+    const q = block.Questions[qi];
+    const truncated = (q.QuestionText || '').replace(/<[^>]*>/g, '').substring(0, 50);
+    const forceOn = q.ForceResponse === 'ON';
+    const forceCls = forceOn ? 'sb force on' : 'sb force off';
+    const forceLabel = forceOn ? 'REQ' : 'OPT';
+    const forceTitle = forceOn ? 'Required (click to make optional)' : 'Optional (click to make required)';
+    const desc = q.QuestionDescription || q.QuestionID;
+    html += `<div class="question-item${isTrash ? ' trash-question' : ''}" draggable="true" data-question-id="${q.QuestionID}" data-block-id="${block.BlockID}"
+      onclick="showDetail('${q.QuestionID}')"
+      ondragstart="qDragStart(event,'${q.QuestionID}','${block.BlockID}')"
+      ondragover="qDragOver(event)" ondragleave="clearDragIndicators(this)"
+      ondrop="qDrop(event,'${q.QuestionID}','${block.BlockID}')" ondragend="dragEnd(event)">
+      <span class="q-info">
+        <span class="q-text" title="${esc(q.QuestionText)}">${esc(truncated || q.QuestionID)}</span>
+        <span class="q-desc" onclick="event.stopPropagation();renameQuestion('${q.QuestionID}',this)" title="Click to rename">${esc(desc)}</span>
+      </span>
+      <span class="q-type">${q.QuestionType}</span>
+      <button class="${forceCls}" onclick="event.stopPropagation();toggleForceResponse('${q.QuestionID}',${forceOn ? 'true' : 'false'})" title="${forceTitle}">${forceLabel}</button>
+      <button class="sb dup" onclick="event.stopPropagation();duplicateQuestion('${q.QuestionID}','${block.BlockID}')" title="Duplicate">&#x2398;</button>
+      <button class="sb danger" onclick="event.stopPropagation();deleteQuestion('${q.QuestionID}')" title="Delete">&times;</button>
+    </div>`;
+  }
+  html += '</div></div>';
+  return html;
+}
+
 function renderSidebar() {
   const container = document.getElementById('blockList');
   if (!surveyBlocks.length) {
     container.innerHTML = '<span class="loading">No blocks found.</span>';
     return;
   }
+  const regularBlocks = surveyBlocks.filter(b => b.Type !== 'Trash');
+  const trashBlock = surveyBlocks.find(b => b.Type === 'Trash');
+
   let html = '';
-  for (let bi = 0; bi < surveyBlocks.length; bi++) {
-    const block = surveyBlocks[bi];
-    const isCollapsed = collapsedBlocks.has(block.BlockID);
-    const arrowClass = isCollapsed ? 'collapse-arrow collapsed' : 'collapse-arrow';
-    html += `<div class="block-item" data-block-id="${block.BlockID}">
-      <div class="block-header" draggable="true"
-        ondragstart="blockDragStart(event,'${block.BlockID}')"
-        ondragover="blockDragOver(event)" ondragleave="clearDragIndicators(this)"
-        ondrop="blockDrop(event,'${block.BlockID}')" ondragend="dragEnd(event)">
-        <span class="${arrowClass}" onclick="toggleBlock('${block.BlockID}')">&#9660;</span>
-        <span class="block-name" onclick="toggleBlock('${block.BlockID}')">${esc(block.Description || block.BlockID)}</span>
-        <span class="block-count">${block.QuestionCount}Q</span>
-        <button class="sb danger" onclick="event.stopPropagation();deleteBlock('${block.BlockID}','${esc(block.Description)}')" title="Delete block">&times;</button>
-      </div>
-      <div class="block-questions ${isCollapsed ? 'collapsed' : ''}" id="bq-${block.BlockID}"
-        ondragover="qContainerDragOver(event)" ondragleave="this.classList.remove('drag-over-empty')"
-        ondrop="qContainerDrop(event,'${block.BlockID}')" data-block-id="${block.BlockID}">`;
-    for (let qi = 0; qi < block.Questions.length; qi++) {
-      const q = block.Questions[qi];
-      const truncated = (q.QuestionText || '').replace(/<[^>]*>/g, '').substring(0, 50);
-      const forceOn = q.ForceResponse === 'ON';
-      const forceCls = forceOn ? 'sb force on' : 'sb force off';
-      const forceLabel = forceOn ? 'REQ' : 'OPT';
-      const forceTitle = forceOn ? 'Required (click to make optional)' : 'Optional (click to make required)';
-      const desc = q.QuestionDescription || q.QuestionID;
-      html += `<div class="question-item" draggable="true" data-question-id="${q.QuestionID}" data-block-id="${block.BlockID}"
-        onclick="showDetail('${q.QuestionID}')"
-        ondragstart="qDragStart(event,'${q.QuestionID}','${block.BlockID}')"
-        ondragover="qDragOver(event)" ondragleave="clearDragIndicators(this)"
-        ondrop="qDrop(event,'${q.QuestionID}','${block.BlockID}')" ondragend="dragEnd(event)">
-        <span class="q-info">
-          <span class="q-text" title="${esc(q.QuestionText)}">${esc(truncated || q.QuestionID)}</span>
-          <span class="q-desc" onclick="event.stopPropagation();renameQuestion('${q.QuestionID}',this)" title="Click to rename">${esc(desc)}</span>
-        </span>
-        <span class="q-type">${q.QuestionType}</span>
-        <button class="${forceCls}" onclick="event.stopPropagation();toggleForceResponse('${q.QuestionID}',${forceOn ? 'true' : 'false'})" title="${forceTitle}">${forceLabel}</button>
-        <button class="sb danger" onclick="event.stopPropagation();deleteQuestion('${q.QuestionID}')" title="Delete">&times;</button>
-      </div>`;
-    }
-    html += '</div></div>';
+  for (const block of regularBlocks) {
+    html += renderBlockHtml(block, false);
+  }
+  if (trashBlock) {
+    html += '<div class="trash-divider"></div>';
+    html += renderBlockHtml(trashBlock, true);
   }
   container.innerHTML = html;
 }
@@ -1521,16 +1540,116 @@ async function toggleForceResponse(questionId, currentlyOn) {
 }
 
 // --- Delete question ---
-async function deleteQuestion(questionId) {
-  if (!confirm('Delete question ' + questionId + '?')) return;
+async function duplicateQuestion(questionId, blockId) {
   const c = getCreds();
   try {
-    await apiFetch('/api/question/delete', {
+    const data = await apiFetch('/api/question/get', {
       apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+    });
+    const q = data.result;
+    const payload = buildUpdatePayload(q);
+    payload.QuestionDescription = (payload.QuestionDescription || '') + '_copy';
+    payload.DataExportTag = (payload.DataExportTag || '') + '_copy';
+    if (q.QuestionJS) payload.QuestionJS = q.QuestionJS;
+    // Don't copy DisplayLogic — references would point to same QIDs but the duplicate is a new question
+    delete payload.DisplayLogic;
+
+    await apiFetch('/api/submit', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: blockId || null, questionJson: payload,
     });
     await loadSurvey();
   } catch(e) {
-    alert('Delete failed: ' + e.message);
+    alert('Duplicate failed: ' + e.message);
+  }
+}
+
+async function duplicateBlock(blockId) {
+  const c = getCreds();
+  const block = surveyBlocks.find(b => b.BlockID === blockId);
+  if (!block) return alert('Block not found');
+  const newName = (block.Description || 'Block') + ' (copy)';
+
+  try {
+    // Create the new block
+    const blockData = await apiFetch('/api/blocks/create', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, blockName: newName,
+    });
+    const newBlockId = blockData.result?.BlockID;
+    if (!newBlockId) throw new Error('Failed to get new block ID');
+
+    // Duplicate each question into the new block
+    for (const q of block.Questions) {
+      const qData = await apiFetch('/api/question/get', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: q.QuestionID,
+      });
+      const payload = buildUpdatePayload(qData.result);
+      if (qData.result.QuestionJS) payload.QuestionJS = qData.result.QuestionJS;
+      delete payload.DisplayLogic;
+
+      await apiFetch('/api/submit', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+        blockId: newBlockId, questionJson: payload,
+      });
+    }
+
+    await loadSurvey();
+  } catch(e) {
+    alert('Duplicate block failed: ' + e.message);
+  }
+}
+
+async function deleteQuestion(questionId) {
+  if (!confirm('Move question ' + questionId + ' to Trash?')) return;
+  const c = getCreds();
+
+  // Find source block and trash block
+  const sourceBlock = surveyBlocks.find(b => b.Questions.some(q => q.QuestionID === questionId));
+  const trashBlock = surveyBlocks.find(b => b.Type === 'Trash');
+  if (!sourceBlock) return alert('Could not find source block');
+  if (!trashBlock) {
+    // No trash block — fall back to hard delete
+    if (!confirm('No Trash block found. Permanently delete?')) return;
+    try {
+      await apiFetch('/api/question/delete', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+      });
+      await loadSurvey();
+    } catch(e) { alert('Delete failed: ' + e.message); }
+    return;
+  }
+  if (sourceBlock.BlockID === trashBlock.BlockID) {
+    // Already in trash — permanently delete
+    if (!confirm('Permanently delete ' + questionId + '?')) return;
+    try {
+      await apiFetch('/api/question/delete', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: questionId,
+      });
+      await loadSurvey();
+    } catch(e) { alert('Delete failed: ' + e.message); }
+    return;
+  }
+
+  try {
+    // Remove from source block
+    const srcRaw = rawBlocks[sourceBlock.BlockID];
+    const srcElements = (srcRaw.BlockElements || []).filter(e => e.QuestionID !== questionId);
+    await apiFetch('/api/blocks/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: sourceBlock.BlockID, blockData: { ...srcRaw, BlockElements: srcElements },
+    });
+
+    // Add to trash block
+    const trashRaw = rawBlocks[trashBlock.BlockID];
+    const trashElements = [...(trashRaw.BlockElements || []), { Type: 'Question', QuestionID: questionId }];
+    await apiFetch('/api/blocks/update', {
+      apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+      blockId: trashBlock.BlockID, blockData: { ...trashRaw, BlockElements: trashElements },
+    });
+
+    await loadSurvey();
+  } catch(e) {
+    alert('Move to trash failed: ' + e.message);
   }
 }
 
