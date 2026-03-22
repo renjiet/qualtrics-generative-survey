@@ -13,6 +13,7 @@ A locally-hosted web app that uses AI (Anthropic Claude or OpenAI GPT-4o) to con
 - **AI-Powered Question Editing** -- Modify existing questions by describing changes in plain English (e.g., "add a Not Applicable option", "change to dropdown") with preview before saving
 - **Custom HTML Components** -- Describe a custom UI component in plain English and AI generates both HTML and JavaScript, with a live interactive preview and embedded data field tracking
 - **Display Logic** -- AI-assisted creation of display logic (show/hide questions based on previous answers) with human-readable preview and JSON editor
+- **Embedded Data Manager** -- View all embedded data fields in the sidebar, sourced from both the survey flow and question JavaScript. Fields are labeled as `FLOW`, `FLOW+JS`, or `JS ONLY` (not yet declared in the flow). Renaming a field performs a **global rename** across the survey flow, all question JavaScript (`setEmbeddedData` calls), and piped text references (`${e://Field/...}`) in question text. One-click button to register JS-only fields in the survey flow so they export properly.
 - **JavaScript Editor** -- View, edit, and AI-generate custom Qualtrics question JavaScript
 - **Supported Question Types** -- Multiple Choice (MC), Text Entry (TE), Descriptive Text (DB), Slider, and more
 
