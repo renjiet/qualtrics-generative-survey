@@ -99,6 +99,32 @@
   .btn-parse:hover { background: #d35400; }
   .btn-parse:disabled { background: #bbb; cursor: not-allowed; }
   .hint { font-size: 0.75em; color: #888; margin-top: 4px; }
+  .bulk-filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .bulk-filter-bar select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.85em; }
+  .bulk-filter-bar label { font-size: 0.85em; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .bulk-selected-count { font-size: 0.82em; color: #888; margin-left: auto; }
+  .bulk-question-list { max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 12px; }
+  .bulk-q-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 0.82em; border-bottom: 1px solid #f0f0f0; }
+  .bulk-q-item:hover { background: #f9f9f9; }
+  .bulk-q-item input[type="checkbox"] { flex-shrink: 0; }
+  .bulk-q-item .bq-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bulk-q-item .bq-type { font-size: 0.75em; color: #888; flex-shrink: 0; }
+  .bulk-q-item .bq-force { font-size: 0.6em; padding: 1px 4px; border-radius: 2px; font-weight: 700; }
+  .bulk-q-item .bq-force.on { background: #e74c3c; color: #fff; }
+  .bulk-q-item .bq-force.off { background: #ddd; color: #888; }
+  .bulk-operations { border: 1px solid #ddd; border-radius: 4px; padding: 12px; margin-bottom: 12px; }
+  .bulk-operations h3 { font-size: 0.9em; margin-bottom: 8px; }
+  .bulk-op-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .bulk-progress-panel { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .bulk-progress-bar { height: 6px; background: #e0e0e0; border-radius: 3px; margin-bottom: 12px; overflow: hidden; }
+  .bulk-progress-fill { height: 100%; background: #27ae60; transition: width 0.3s; border-radius: 3px; }
+  .bulk-result-item { border: 1px solid #ddd; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.82em; }
+  .bulk-result-item.pending { border-left: 3px solid #bbb; }
+  .bulk-result-item.processing { border-left: 3px solid #e67e22; background: #fff8f0; }
+  .bulk-result-item.done { border-left: 3px solid #27ae60; }
+  .bulk-result-item.error { border-left: 3px solid #c0392b; background: #fef0f0; }
+  .bulk-result-item .br-header { display: flex; justify-content: space-between; align-items: center; }
+  .bulk-result-item .br-changes { margin-top: 6px; font-size: 0.85em; color: #555; }
   .creator-tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 2px solid #ddd; }
   .creator-tab { padding: 6px 16px; cursor: pointer; font-size: 0.9em; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #888; }
   .creator-tab.active { color: #2c3e50; border-bottom-color: #e67e22; }
@@ -263,6 +289,7 @@
       <div class="creator-tabs">
         <div class="creator-tab active" onclick="switchCreatorMode('question')">Create Questions</div>
         <div class="creator-tab" onclick="switchCreatorMode('html')">Custom HTML</div>
+        <div class="creator-tab" onclick="switchCreatorMode('bulk')">Bulk Edit</div>
       </div>
       <div class="block-selector">
         <label style="font-size:0.85em;">Target Block:</label>
@@ -280,6 +307,46 @@
         <div class="hint">Describe a custom UI component. Specify embedded data field names or let AI infer them.</div>
         <button class="btn-parse" id="btnGenHtml" onclick="generateHtmlComponent()">Generate with AI</button>
       </div>
+      <div id="creatorBulk" style="display:none;">
+        <div class="bulk-filter-bar">
+          <label><input type="checkbox" id="bulkSelectAllCb" onchange="bulkSelectAll(this.checked)"> Select All</label>
+          <select id="bulkBlockFilter" onchange="renderBulkQuestionList()"><option value="">All Blocks</option></select>
+          <select id="bulkTypeFilter" onchange="renderBulkQuestionList()">
+            <option value="">All Types</option>
+            <option value="MC">MC</option><option value="TE">TE</option><option value="DB">DB</option>
+            <option value="Slider">Slider</option><option value="Matrix">Matrix</option><option value="RO">RO</option>
+          </select>
+          <span class="bulk-selected-count" id="bulkSelectedCount">0 selected</span>
+        </div>
+        <div class="bulk-question-list" id="bulkQuestionList"></div>
+        <div class="bulk-operations">
+          <h3>Quick Operations</h3>
+          <div class="bulk-op-row">
+            <button class="btn-submit" onclick="bulkToggleForceResponse('ON')">Force Response ON</button>
+            <button class="btn-submit" style="background:#95a5a6;" onclick="bulkToggleForceResponse('OFF')">Force Response OFF</button>
+          </div>
+        </div>
+        <div class="bulk-operations">
+          <h3>AI Bulk Modify</h3>
+          <textarea class="question-input" id="bulkAiPrompt" style="min-height:80px;" placeholder="Describe the modification to apply to all selected questions, e.g.&#10;&#10;Add JavaScript that restricts input to numbers only&#10;Add a 'Prefer not to say' option to all MC questions&#10;Translate question text to Spanish"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button class="btn-parse" id="btnBulkAutoSelect" onclick="bulkAutoSelect()">Auto-select Questions</button>
+            <button class="btn-parse" id="btnBulkModify" onclick="bulkModifyWithAI()">Modify Selected with AI</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bulk-progress-panel" id="bulkProgressPanel" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h2>Bulk Edit Progress</h2>
+        <div style="display:flex;gap:8px;" id="bulkProgressActions" style="display:none;">
+          <button class="btn-submit" onclick="bulkSaveAll()">Save All Changes</button>
+          <button class="btn-submit" style="background:#95a5a6;" onclick="bulkDiscardAll()">Discard All</button>
+        </div>
+      </div>
+      <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkProgressFill" style="width:0%"></div></div>
+      <div id="bulkResultsList"></div>
     </div>
 
     <div class="html-preview-panel" id="htmlPreviewPanel" style="display:none;">
@@ -1137,11 +1204,278 @@ async function submitAll() {
 
 // --- Creator mode toggle ---
 function switchCreatorMode(mode) {
+  const modes = ['question', 'html', 'bulk'];
   document.querySelectorAll('.creator-tab').forEach((t, i) => {
-    t.classList.toggle('active', (mode === 'question' && i === 0) || (mode === 'html' && i === 1));
+    t.classList.toggle('active', mode === modes[i]);
   });
   document.getElementById('creatorQuestion').style.display = mode === 'question' ? '' : 'none';
   document.getElementById('creatorHtml').style.display = mode === 'html' ? '' : 'none';
+  document.getElementById('creatorBulk').style.display = mode === 'bulk' ? '' : 'none';
+  if (mode === 'bulk') {
+    bulkPopulateBlockFilter();
+    renderBulkQuestionList();
+  }
+}
+
+// --- Bulk Edit ---
+let bulkSelectedQIDs = new Set();
+let bulkModifiedData = {};
+let bulkOperationInProgress = false;
+
+function bulkPopulateBlockFilter() {
+  const sel = document.getElementById('bulkBlockFilter');
+  const prev = sel.value;
+  let html = '<option value="">All Blocks</option>';
+  for (const b of surveyBlocks.filter(b => b.Type !== 'Trash')) {
+    html += `<option value="${b.BlockID}">${esc(b.Description || b.BlockID)}</option>`;
+  }
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+function renderBulkQuestionList() {
+  const blockFilter = document.getElementById('bulkBlockFilter').value;
+  const typeFilter = document.getElementById('bulkTypeFilter').value;
+  const container = document.getElementById('bulkQuestionList');
+
+  let html = '';
+  for (const block of surveyBlocks.filter(b => b.Type !== 'Trash')) {
+    if (blockFilter && block.BlockID !== blockFilter) continue;
+    for (const q of block.Questions) {
+      if (typeFilter && q.QuestionType !== typeFilter) continue;
+      const checked = bulkSelectedQIDs.has(q.QuestionID) ? 'checked' : '';
+      const desc = q.QuestionDescription || q.QuestionID;
+      const forceOn = q.ForceResponse === 'ON';
+      html += `<div class="bulk-q-item">
+        <input type="checkbox" ${checked} onchange="bulkToggleQuestion('${q.QuestionID}', this.checked)">
+        <span class="bq-desc" title="${esc(q.QuestionText)}">${esc(desc)}</span>
+        <span class="bq-type">${q.QuestionType}</span>
+        <span class="bq-force ${forceOn ? 'on' : 'off'}">${forceOn ? 'REQ' : 'OPT'}</span>
+      </div>`;
+    }
+  }
+  container.innerHTML = html || '<div style="padding:10px;color:#888;">No questions match filters</div>';
+  updateBulkSelectedCount();
+}
+
+function bulkToggleQuestion(qid, checked) {
+  if (checked) bulkSelectedQIDs.add(qid);
+  else bulkSelectedQIDs.delete(qid);
+  updateBulkSelectedCount();
+}
+
+function bulkSelectAll(checked) {
+  const blockFilter = document.getElementById('bulkBlockFilter').value;
+  const typeFilter = document.getElementById('bulkTypeFilter').value;
+  for (const block of surveyBlocks.filter(b => b.Type !== 'Trash')) {
+    if (blockFilter && block.BlockID !== blockFilter) continue;
+    for (const q of block.Questions) {
+      if (typeFilter && q.QuestionType !== typeFilter) continue;
+      if (checked) bulkSelectedQIDs.add(q.QuestionID);
+      else bulkSelectedQIDs.delete(q.QuestionID);
+    }
+  }
+  renderBulkQuestionList();
+}
+
+function updateBulkSelectedCount() {
+  document.getElementById('bulkSelectedCount').textContent = bulkSelectedQIDs.size + ' selected';
+}
+
+function showBulkProgress(qids) {
+  const panel = document.getElementById('bulkProgressPanel');
+  const list = document.getElementById('bulkResultsList');
+  panel.style.display = 'block';
+  document.getElementById('bulkProgressFill').style.width = '0%';
+  let html = '';
+  for (const qid of qids) {
+    const q = allQuestions[qid];
+    const desc = q ? (q.QuestionDescription || qid) : qid;
+    html += `<div class="bulk-result-item pending" id="br-${qid}">
+      <div class="br-header">
+        <span><strong>${qid}</strong> — ${esc(desc)}</span>
+        <span class="status" id="br-status-${qid}">Pending</span>
+      </div>
+      <div class="br-changes" id="br-changes-${qid}"></div>
+    </div>`;
+  }
+  list.innerHTML = html;
+}
+
+function updateBulkProgressBar(fraction) {
+  document.getElementById('bulkProgressFill').style.width = (fraction * 100) + '%';
+}
+
+function updateBulkProgressItem(qid, status, errorMsg) {
+  const item = document.getElementById('br-' + qid);
+  const statusEl = document.getElementById('br-status-' + qid);
+  if (!item || !statusEl) return;
+  item.className = 'bulk-result-item ' + status;
+  if (status === 'processing') statusEl.textContent = 'Processing...';
+  else if (status === 'done') statusEl.textContent = 'Done';
+  else if (status === 'saved') { statusEl.textContent = 'Saved'; statusEl.style.color = '#27ae60'; }
+  else if (status === 'error') { statusEl.textContent = 'Error: ' + (errorMsg || ''); statusEl.style.color = '#c0392b'; }
+}
+
+function showBulkDiff(qid, original, modified) {
+  const changesEl = document.getElementById('br-changes-' + qid);
+  if (!changesEl) return;
+  let changes = [];
+  if (original.QuestionText !== modified.QuestionText) changes.push('QuestionText changed');
+  if (JSON.stringify(original.Choices) !== JSON.stringify(modified.Choices)) changes.push('Choices changed');
+  if (JSON.stringify(original.Validation) !== JSON.stringify(modified.Validation)) changes.push('Validation changed');
+  if (original.QuestionType !== modified.QuestionType) changes.push(`Type: ${original.QuestionType} → ${modified.QuestionType}`);
+  if (original.Selector !== modified.Selector) changes.push(`Selector: ${original.Selector} → ${modified.Selector}`);
+  if (original.QuestionJS !== modified.QuestionJS) changes.push('JavaScript changed');
+  changesEl.innerHTML = changes.length ? changes.join(' · ') : 'No visible changes';
+  changesEl.style.display = '';
+}
+
+async function bulkToggleForceResponse(newValue) {
+  if (bulkSelectedQIDs.size === 0) return alert('Select at least one question');
+  if (bulkOperationInProgress) return;
+  bulkOperationInProgress = true;
+
+  const c = getCreds();
+  const qids = [...bulkSelectedQIDs];
+  showBulkProgress(qids);
+
+  for (let i = 0; i < qids.length; i++) {
+    updateBulkProgressItem(qids[i], 'processing');
+    try {
+      const data = await apiFetch('/api/question/get', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: qids[i],
+      });
+      const update = buildUpdatePayload(data.result);
+      update.Validation = { Settings: { ForceResponse: newValue, ForceResponseType: newValue, Type: 'None' } };
+      await apiFetch('/api/question/update', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+        questionId: qids[i], questionJson: update,
+      });
+      updateBulkProgressItem(qids[i], 'saved');
+    } catch(e) {
+      updateBulkProgressItem(qids[i], 'error', e.message);
+    }
+    updateBulkProgressBar((i + 1) / qids.length);
+  }
+  bulkOperationInProgress = false;
+  await loadSurvey();
+  renderBulkQuestionList();
+}
+
+async function bulkAutoSelect() {
+  const prompt = document.getElementById('bulkAiPrompt').value.trim();
+  if (!prompt) return alert('Enter a modification prompt first');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your LLM API key');
+
+  const btn = document.getElementById('btnBulkAutoSelect');
+  btn.disabled = true;
+  btn.textContent = 'Selecting...';
+
+  try {
+    const data = await apiFetch('/api/auto-select', {
+      llmKey: c.llmKey,
+      llmProvider: c.llmProvider,
+      prompt: prompt,
+      surveyQuestions: buildQuestionContext(),
+    });
+    if (data.success && Array.isArray(data.qids)) {
+      bulkSelectedQIDs = new Set(data.qids);
+      // Clear filters so all selected questions are visible
+      document.getElementById('bulkBlockFilter').value = '';
+      document.getElementById('bulkTypeFilter').value = '';
+      renderBulkQuestionList();
+    } else {
+      alert('Auto-select failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Auto-select failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Auto-select Questions';
+  }
+}
+
+async function bulkModifyWithAI() {
+  const prompt = document.getElementById('bulkAiPrompt').value.trim();
+  if (!prompt) return alert('Enter a modification prompt');
+  if (bulkSelectedQIDs.size === 0) return alert('Select at least one question');
+  const c = getCreds();
+  if (!c.llmKey) return alert('Enter your LLM API key');
+  if (bulkOperationInProgress) return;
+
+  bulkOperationInProgress = true;
+  bulkModifiedData = {};
+  const qids = [...bulkSelectedQIDs];
+  showBulkProgress(qids);
+  document.getElementById('btnBulkModify').disabled = true;
+  document.getElementById('btnBulkModify').textContent = 'Modifying...';
+
+  for (let i = 0; i < qids.length; i++) {
+    const qid = qids[i];
+    updateBulkProgressItem(qid, 'processing');
+    try {
+      const getData = await apiFetch('/api/question/get', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId, questionId: qid,
+      });
+      const original = getData.result;
+
+      const modData = await apiFetch('/api/modify-question', {
+        llmKey: c.llmKey, llmProvider: c.llmProvider,
+        prompt: prompt, questionJson: original,
+      });
+
+      if (modData.success) {
+        bulkModifiedData[qid] = { original, modified: modData.questionJson };
+        updateBulkProgressItem(qid, 'done');
+        showBulkDiff(qid, original, modData.questionJson);
+      } else {
+        updateBulkProgressItem(qid, 'error', modData.error);
+      }
+    } catch(e) {
+      updateBulkProgressItem(qid, 'error', e.message);
+    }
+    updateBulkProgressBar((i + 1) / qids.length);
+  }
+  bulkOperationInProgress = false;
+  document.getElementById('btnBulkModify').disabled = false;
+  document.getElementById('btnBulkModify').textContent = 'Modify Selected with AI';
+}
+
+async function bulkSaveAll() {
+  if (bulkOperationInProgress) return;
+  const qids = Object.keys(bulkModifiedData);
+  if (!qids.length) return alert('No modifications to save');
+
+  bulkOperationInProgress = true;
+  const c = getCreds();
+
+  for (let i = 0; i < qids.length; i++) {
+    const qid = qids[i];
+    const { modified } = bulkModifiedData[qid];
+    updateBulkProgressItem(qid, 'processing');
+    try {
+      const update = buildUpdatePayload(modified);
+      if (modified.QuestionJS) update.QuestionJS = modified.QuestionJS;
+      await apiFetch('/api/question/update', {
+        apiToken: c.apiToken, dataCenter: c.dataCenter, surveyId: c.surveyId,
+        questionId: qid, questionJson: update,
+      });
+      updateBulkProgressItem(qid, 'saved');
+    } catch(e) {
+      updateBulkProgressItem(qid, 'error', e.message);
+    }
+  }
+  bulkModifiedData = {};
+  bulkOperationInProgress = false;
+  await loadSurvey();
+  renderBulkQuestionList();
+}
+
+function bulkDiscardAll() {
+  bulkModifiedData = {};
+  document.getElementById('bulkProgressPanel').style.display = 'none';
 }
 
 // --- Custom HTML component generation ---

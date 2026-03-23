@@ -521,6 +521,54 @@ def update_flow():
     return jsonify(resp.json())
 
 
+AUTO_SELECT_SYSTEM_PROMPT = """You are an assistant that determines which survey questions a modification should apply to.
+
+You will receive:
+1. A modification prompt describing what changes to make
+2. A list of survey questions with their QID, type, description, and text
+
+Return ONLY a JSON array of QID strings for the questions that the modification should apply to. No markdown fences, no commentary.
+
+Rules:
+- Select questions where the modification makes sense. For example:
+  - "restrict input to numbers" → select TE (text entry) questions only
+  - "add a Prefer not to say option" → select MC (multiple choice) questions only
+  - "translate to Spanish" → select all questions with text content
+  - "make all required" → select all questions
+- If the prompt mentions specific questions by name or QID, select only those
+- If unsure whether a question should be included, include it
+- Output ONLY the JSON array, e.g. ["QID1", "QID3", "QID5"]"""
+
+
+@app.route("/api/auto-select", methods=["POST"])
+def auto_select():
+    data = request.json
+    llm_key = data["llmKey"]
+    llm_provider = data.get("llmProvider", "anthropic")
+    prompt = data["prompt"]
+    survey_questions = data.get("surveyQuestions", {})
+
+    context_lines = ["Available survey questions:"]
+    for qid, q in survey_questions.items():
+        desc = q.get("QuestionDescription", "")
+        qtype = q.get("QuestionType", "")
+        qtext = q.get("QuestionText", "")[:80]
+        line = f"- {qid} ({qtype}): {desc} — \"{qtext}\""
+        context_lines.append(line)
+
+    user_msg = "\n".join(context_lines) + f"\n\nModification prompt: {prompt}"
+
+    try:
+        content = llm_complete(llm_key, llm_provider, AUTO_SELECT_SYSTEM_PROMPT, user_msg, max_tokens=1024)
+        content = strip_markdown_fences(content)
+        qids = json.loads(content)
+        return jsonify({"success": True, "qids": qids})
+    except json.JSONDecodeError as e:
+        return jsonify({"success": False, "error": f"Invalid JSON from LLM: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route("/api/generate-display-logic", methods=["POST"])
 def generate_display_logic():
     data = request.json
