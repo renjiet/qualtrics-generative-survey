@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Survey Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #222; background: #f0f0f0; line-height: 1.6; }
+
+  /* Credential bar */
+  .creds-bar { background: #2c3e50; color: #fff; padding: 14px 24px; display: flex; align-items: center;
+    gap: 12px; flex-wrap: wrap; }
+  .creds-bar label { font-size: 0.8em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .creds-bar input, .creds-bar select { padding: 6px 10px; border: 1px solid #555; border-radius: 4px;
+    font-size: 0.85em; background: #3d5166; color: #fff; }
+  .creds-bar input::placeholder { color: #aaa; }
+  .creds-bar .btn { padding: 7px 18px; border: none; border-radius: 4px; font-size: 0.85em;
+    font-weight: 600; cursor: pointer; }
+  .btn-load { background: #27ae60; color: #fff; }
+  .btn-load:hover { background: #219a52; }
+  .btn-load:disabled { background: #555; cursor: not-allowed; }
+  .btn-print { background: #3498db; color: #fff; }
+  .btn-print:hover { background: #2980b9; }
+  .creds-bar .status { font-size: 0.8em; margin-left: 8px; }
+  .status.ok { color: #2ecc71; }
+  .status.fail { color: #e74c3c; }
+  .status.loading { color: #f39c12; }
+
+  /* Report styles */
+  .report-wrap { max-width: 850px; margin: 0 auto; padding: 40px 20px 60px; }
+  .report-header { text-align: center; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 2px solid #ccc; }
+  .report-header h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 4px; }
+  .report-meta { font-size: 0.85em; color: #666; }
+  .report-block { margin-bottom: 36px; }
+  .block-title { font-size: 1.15em; font-weight: 700; color: #2c3e50; padding: 10px 16px;
+    background: #fff; border: 1px solid #ddd; border-radius: 6px 6px 0 0; margin-bottom: 0; }
+  .block-qcount { font-weight: 400; color: #888; font-size: 0.85em; }
+  .report-question { background: #fff; border: 1px solid #ddd; border-top: none; padding: 24px; }
+  .report-question:last-child { border-radius: 0 0 6px 6px; }
+  .question-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+  .question-header h3 { font-size: 1em; font-weight: 600; color: #333; }
+  .question-meta { font-size: 0.75em; color: #888; margin-top: 2px; }
+  .report-section { margin-bottom: 16px; }
+  .report-section:last-child { margin-bottom: 0; }
+  .report-section h4 { font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.8px;
+    color: #999; margin-bottom: 6px; font-weight: 600; }
+  .preview-content { font-size: 0.9em; padding: 12px; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
+  pre.report-code { background: #f6f8fa; padding: 12px 14px; border-radius: 4px; font-size: 0.8em;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace; white-space: pre-wrap; word-wrap: break-word;
+    overflow-x: auto; line-height: 1.5; border-left: 3px solid #3498db; }
+  pre.report-code.js-code { border-left-color: #e67e22; }
+  pre.report-code.none { color: #aaa; font-style: italic; border-left-color: #ddd; }
+  .report-footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 40px;
+    padding-top: 20px; border-top: 2px solid #ccc; }
+  .empty-state { text-align: center; color: #888; padding: 80px 20px; font-size: 1.1em; }
+
+  /* Question preview */
+  .qp-text { font-size: 1.05em; margin-bottom: 12px; line-height: 1.5; }
+  .qp-choices { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .qp-choice { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .qp-choice input { flex-shrink: 0; }
+  .qp-te { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; }
+  .qp-te.multi { min-height: 80px; resize: vertical; }
+  .qp-desc { color: #666; font-style: italic; margin-bottom: 8px; font-size: 0.85em; }
+  .qp-slider { margin: 12px 0; }
+  .qp-slider input[type="range"] { width: 100%; }
+  .qp-slider-labels { display: flex; justify-content: space-between; font-size: 0.8em; color: #666; }
+  .qp-meta { font-size: 0.75em; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; }
+  .embedded-data-info { margin-top: 8px; padding: 6px 8px; background: #fff8e1; border-radius: 4px; font-size: 0.8em; }
+  .ed-title { font-weight: 600; font-size: 0.85em; color: #666; margin-bottom: 2px; }
+  .ed-field { display: inline-block; background: #fff3cd; padding: 1px 6px; border-radius: 3px;
+    font-family: monospace; font-size: 0.9em; margin: 1px 2px; }
+
+  /* Display logic */
+  .logic-condition { margin: 2px 0; font-size: 0.85em; }
+  .logic-conjunction { font-weight: 700; color: #2980b9; }
+  .logic-question { color: #16a085; font-weight: 500; }
+  .logic-choice { color: #c0392b; }
+  .logic-operator { color: #8e44ad; }
+
+  @media print {
+    .creds-bar { display: none; }
+    body { background: #fff; }
+    .report-wrap { padding: 20px 0; max-width: 100%; }
+    .report-block { page-break-before: always; }
+    .report-block:first-child { page-break-before: avoid; }
+    .block-title { page-break-after: avoid; }
+    .report-question { page-break-inside: avoid; }
+    pre.report-code { white-space: pre-wrap; word-wrap: break-word; }
+    .report-header { border-bottom-color: #000; }
+    .report-footer { border-top-color: #000; }
+  }
+</style>
+</head>
+<body>
+
+<div class="creds-bar">
+  <div>
+    <label>API Token</label>
+    <input type="password" id="apiToken" placeholder="Qualtrics API token">
+  </div>
+  <div>
+    <label>Data Center</label>
+    <select id="dataCenter">
+      <option value="syd1">Sydney AU (syd1)</option>
+      <option value="iad1">US East (iad1)</option>
+      <option value="sjc1">US West (sjc1)</option>
+      <option value="fra1">EU (fra1)</option>
+      <option value="ca1">Canada (ca1)</option>
+      <option value="gov1">US Gov (gov1)</option>
+    </select>
+  </div>
+  <div>
+    <label>Survey ID</label>
+    <input type="text" id="surveyId" placeholder="SV_xxxxxxx">
+  </div>
+  <button class="btn btn-load" id="btnLoad" onclick="generateReport()">Generate Report</button>
+  <button class="btn btn-print" onclick="downloadHtml()" style="display:none;" id="btnDownload">Download HTML</button>
+  <span class="status" id="status"></span>
+</div>
+
+<div id="reportArea">
+  <div class="empty-state">Enter your Qualtrics credentials and click <strong>Generate Report</strong> to view the survey.</div>
+</div>
+
+<script>
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function loadCreds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('qualtricsReportCreds') || '{}');
+    if (saved.apiToken) document.getElementById('apiToken').value = saved.apiToken;
+    if (saved.dataCenter) document.getElementById('dataCenter').value = saved.dataCenter;
+    if (saved.surveyId) document.getElementById('surveyId').value = saved.surveyId;
+  } catch(e) {}
+}
+
+function saveCreds() {
+  localStorage.setItem('qualtricsReportCreds', JSON.stringify({
+    apiToken: document.getElementById('apiToken').value.trim(),
+    dataCenter: document.getElementById('dataCenter').value,
+    surveyId: document.getElementById('surveyId').value.trim(),
+  }));
+}
+
+function getCreds() {
+  return {
+    apiToken: document.getElementById('apiToken').value.trim(),
+    dataCenter: document.getElementById('dataCenter').value,
+    surveyId: document.getElementById('surveyId').value.trim(),
+  };
+}
+
+function renderQuestionPreviewHtml(q) {
+  let html = '';
+  html += `<div class="qp-text">${q.QuestionText || ''}</div>`;
+
+  const type = q.QuestionType;
+  const sel = q.Selector;
+  const choices = q.Choices || {};
+  const choiceOrder = q.ChoiceOrder || Object.keys(choices);
+
+  if (type === 'MC') {
+    const isMulti = ['MAVR', 'MACOL', 'MAHR', 'MSB'].includes(sel);
+    const inputType = isMulti ? 'checkbox' : 'radio';
+    if (sel === 'DL' || sel === 'SB') {
+      html += '<select class="qp-te" disabled>';
+      html += '<option value="">— Select —</option>';
+      for (const k of choiceOrder) {
+        const c = choices[k];
+        if (c) html += `<option>${c.Display || ''}</option>`;
+      }
+      html += '</select>';
+    } else {
+      html += '<ul class="qp-choices">';
+      for (const k of choiceOrder) {
+        const c = choices[k];
+        if (c) html += `<li class="qp-choice"><input type="${inputType}" disabled> ${c.Display || ''}</li>`;
+      }
+      html += '</ul>';
+    }
+  } else if (type === 'TE') {
+    if (sel === 'ML') {
+      html += '<textarea class="qp-te multi" disabled placeholder="Text entry (multi-line)"></textarea>';
+    } else if (sel === 'FORM') {
+      for (const k of choiceOrder) {
+        const c = choices[k];
+        if (c) html += `<div style="margin-bottom:6px;"><label style="font-size:0.85em;color:#555;">${c.Display || ''}</label><input class="qp-te" disabled></div>`;
+      }
+    } else {
+      html += '<input class="qp-te" disabled placeholder="Text entry (single line)">';
+    }
+  } else if (type === 'DB') {
+    html += '<div class="qp-desc">Descriptive text — no response collected</div>';
+  } else if (type === 'Slider') {
+    for (const k of choiceOrder) {
+      const c = choices[k];
+      html += '<div class="qp-slider">';
+      if (c) html += `<div style="font-size:0.85em;margin-bottom:4px;">${c.Display || ''}</div>`;
+      html += '<input type="range" min="0" max="100" value="50" disabled>';
+      if (q.Labels) {
+        const lblKeys = Object.keys(q.Labels);
+        html += '<div class="qp-slider-labels">';
+        for (const lk of lblKeys) html += `<span>${q.Labels[lk].Display || ''}</span>`;
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  } else if (type === 'Matrix') {
+    const answers = q.Answers || {};
+    const answerOrder = q.AnswerOrder || Object.keys(answers);
+    html += '<table style="width:100%;border-collapse:collapse;font-size:0.85em;">';
+    html += '<tr><th></th>';
+    for (const ak of answerOrder) {
+      const a = answers[ak];
+      if (a) html += `<th style="padding:4px 8px;text-align:center;font-weight:normal;color:#555;">${a.Display || ''}</th>`;
+    }
+    html += '</tr>';
+    for (const ck of choiceOrder) {
+      const c = choices[ck];
+      if (!c) continue;
+      html += `<tr><td style="padding:4px 8px;">${c.Display || ''}</td>`;
+      for (const ak of answerOrder) {
+        html += '<td style="text-align:center;"><input type="radio" disabled></td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+  } else if (type === 'RO') {
+    html += '<ol class="qp-choices" style="list-style:decimal;padding-left:20px;">';
+    for (const k of choiceOrder) {
+      const c = choices[k];
+      if (c) html += `<li class="qp-choice">${c.Display || ''}</li>`;
+    }
+    html += '</ol>';
+  } else {
+    html += `<div class="qp-desc">Preview not available for ${type}/${sel}</div>`;
+  }
+
+  const validation = q.Validation?.Settings || {};
+  const forceResp = validation.ForceResponse === 'ON' ? 'Required' : 'Optional';
+  html += `<div class="qp-meta">${type} / ${sel}${q.SubSelector ? ' / ' + q.SubSelector : ''} · ${forceResp} · ${q.DataExportTag || q.QuestionID}</div>`;
+
+  if (q.QuestionJS) {
+    const edMatches = [...q.QuestionJS.matchAll(/setEmbeddedData\s*\(\s*['"]([^'"]+)['"]/g)];
+    const edFields = [...new Set(edMatches.map(m => m[1]))];
+    if (edFields.length) {
+      html += `<div class="embedded-data-info"><div class="ed-title">Embedded Data Fields</div>` +
+        edFields.map(f => `<span class="ed-field">${esc(f)}</span>`).join(' ') + '</div>';
+    }
+  }
+
+  return html;
+}
+
+function renderDisplayLogicHtml(logic, allQuestions) {
+  if (!logic || logic.Type !== 'BooleanExpression') return '';
+
+  let html = '';
+  let groupIdx = 0;
+  while (logic[String(groupIdx)]) {
+    const group = logic[String(groupIdx)];
+    if (groupIdx > 0) {
+      html += '<div class="logic-condition"><span class="logic-conjunction">OR</span></div>';
+    }
+    let condIdx = 0;
+    while (group[String(condIdx)]) {
+      const cond = group[String(condIdx)];
+      if (cond.Type === 'Expression') {
+        const conjunction = cond.Conjuction;
+        let line = '';
+        if (condIdx > 0 && conjunction) {
+          line += `<span class="logic-conjunction">${esc(conjunction.toUpperCase())}</span> `;
+        } else if (groupIdx === 0 && condIdx === 0) {
+          line += '<span class="logic-conjunction">If</span> ';
+        }
+        const qid = cond.QuestionID || '';
+        const qData = allQuestions[qid];
+        const qName = qData ? (qData.QuestionDescription || qid) : qid;
+        line += `<span class="logic-question">${esc(qName)}</span> `;
+        const operator = cond.Operator || '';
+        if (operator === 'Selected' || operator === 'NotSelected') {
+          const choiceLocator = cond.ChoiceLocator || '';
+          const choiceKeyMatch = choiceLocator.match(/SelectableChoice\/(\d+)/);
+          const choiceKey = choiceKeyMatch ? choiceKeyMatch[1] : '';
+          const choiceDisplay = qData?.Choices?.[choiceKey]?.Display || choiceKey;
+          line += `<span class="logic-choice">"${esc(choiceDisplay)}"</span> `;
+          line += `<span class="logic-operator">${operator === 'Selected' ? 'Is Selected' : 'Is Not Selected'}</span>`;
+        } else {
+          const opLabels = {
+            Empty: 'Is Empty', NotEmpty: 'Is Not Empty', EqualTo: 'Is Equal To',
+            NotEqualTo: 'Is Not Equal To', Contains: 'Contains',
+            GreaterThan: 'Is Greater Than', LessThan: 'Is Less Than',
+            GreaterThanOrEqual: 'Is Greater Than or Equal To',
+            LessThanOrEqual: 'Is Less Than or Equal To',
+          };
+          line += `<span class="logic-operator">${esc(opLabels[operator] || operator)}</span>`;
+          if (cond.RightOperand) {
+            line += ` <span class="logic-choice">"${esc(cond.RightOperand)}"</span>`;
+          }
+        }
+        html += `<div class="logic-condition">${line}</div>`;
+      }
+      condIdx++;
+    }
+    groupIdx++;
+  }
+  return html;
+}
+
+async function generateReport() {
+  const c = getCreds();
+  if (!c.apiToken || !c.surveyId) {
+    alert('Please enter your API token and Survey ID.');
+    return;
+  }
+
+  saveCreds();
+
+  const status = document.getElementById('status');
+  const btn = document.getElementById('btnLoad');
+  const area = document.getElementById('reportArea');
+
+  status.className = 'status loading';
+  status.textContent = 'Loading survey...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('/api/blocks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(c),
+    });
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    const surveyBlocks = data.blocks;
+    const allQuestions = data.questions;
+    const surveyFlow = data.flow;
+
+    // Order blocks by flow
+    const ordered = [];
+    const seen = new Set();
+    if (surveyFlow && surveyFlow.Flow) {
+      for (const elem of surveyFlow.Flow) {
+        if (elem.Type === 'Block' || elem.Type === 'Standard') {
+          const block = surveyBlocks.find(b => b.BlockID === elem.ID);
+          if (block && block.Type !== 'Trash') {
+            ordered.push(block);
+            seen.add(block.BlockID);
+          }
+        }
+      }
+    }
+    for (const block of surveyBlocks) {
+      if (block.Type !== 'Trash' && !seen.has(block.BlockID)) ordered.push(block);
+    }
+
+    const now = new Date().toLocaleString();
+    let totalQuestions = 0;
+    let html = '<div class="report-wrap">';
+
+    html += `<header class="report-header">
+      <h1>Survey Report</h1>
+      <p class="report-meta">Survey ID: ${esc(c.surveyId)} &middot; Generated: ${esc(now)}</p>
+    </header>`;
+
+    for (const block of ordered) {
+      html += `<section class="report-block">`;
+      html += `<h2 class="block-title">${esc(block.Description || block.BlockID)} <span class="block-qcount">(${block.QuestionCount} question${block.QuestionCount !== 1 ? 's' : ''})</span></h2>`;
+
+      for (const qSummary of block.Questions) {
+        const q = allQuestions[qSummary.QuestionID];
+        if (!q) continue;
+        totalQuestions++;
+
+        const qid = q.QuestionID || qSummary.QuestionID;
+        const varName = q.QuestionDescription || q.DataExportTag || qid;
+        const type = q.QuestionType || '';
+        const sel = q.Selector || '';
+        const forceResp = q.Validation?.Settings?.ForceResponse === 'ON' ? 'Required' : 'Optional';
+        const hasLogic = !!q.DisplayLogic;
+
+        html += `<article class="report-question">`;
+        html += `<div class="question-header">
+          <h3>${esc(qid)} &mdash; ${esc(varName)}</h3>
+          <div class="question-meta">${esc(type)} / ${esc(sel)} &middot; ${forceResp}${hasLogic ? ' &middot; Has Display Logic' : ''}</div>
+        </div>`;
+
+        html += `<div class="report-section">
+          <h4>Preview</h4>
+          <div class="preview-content">${renderQuestionPreviewHtml(q)}</div>
+        </div>`;
+
+        html += `<div class="report-section">
+          <h4>Question HTML</h4>
+          <pre class="report-code">${esc(q.QuestionText || '')}</pre>
+        </div>`;
+
+        html += `<div class="report-section"><h4>JavaScript</h4>`;
+        if (q.QuestionJS) {
+          html += `<pre class="report-code js-code">${esc(q.QuestionJS)}</pre>`;
+        } else {
+          html += `<pre class="report-code none">None</pre>`;
+        }
+        html += `</div>`;
+
+        if (q.DisplayLogic) {
+          const logicHtml = renderDisplayLogicHtml(q.DisplayLogic, allQuestions);
+          if (logicHtml) {
+            html += `<div class="report-section">
+              <h4>Display Logic</h4>
+              <div style="font-size:0.85em;">${logicHtml}</div>
+            </div>`;
+          }
+        }
+
+        html += `</article>`;
+      }
+
+      html += `</section>`;
+    }
+
+    html += `<footer class="report-footer">
+      ${totalQuestions} question${totalQuestions !== 1 ? 's' : ''} across ${ordered.length} block${ordered.length !== 1 ? 's' : ''} &middot; Generated ${esc(now)}
+    </footer>`;
+    html += '</div>';
+
+    area.innerHTML = html;
+    lastReportHtml = html;
+    lastSurveyId = c.surveyId;
+    status.className = 'status ok';
+    status.textContent = `Loaded ${totalQuestions} questions`;
+    document.getElementById('btnDownload').style.display = '';
+
+  } catch(e) {
+    status.className = 'status fail';
+    status.textContent = e.message;
+    area.innerHTML = `<div class="empty-state" style="color:#c0392b;">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let lastReportHtml = '';
+let lastSurveyId = '';
+
+const REPORT_CSS = document.querySelector('style').textContent;
+
+function downloadHtml() {
+  if (!lastReportHtml) return;
+  const fullHtml = `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>Survey Report — ${esc(lastSurveyId)}</title>
+<style>${REPORT_CSS}</style>
+</head><body>${lastReportHtml}</body></html>`;
+
+  const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `survey-report-${lastSurveyId}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadCreds();
+</script>
+</body>
+</html>

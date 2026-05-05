@@ -642,5 +642,10 @@ def modify_question():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@app.route("/report")
+def report_page():
+    return render_template("report.html")
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

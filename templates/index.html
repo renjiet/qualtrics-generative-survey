@@ -230,6 +230,7 @@
 <div class="topbar">
   <h1>Qualtrics Survey Automation</h1>
   <button class="toggle-creds" onclick="toggleCreds()">Credentials</button>
+  <button class="toggle-creds" onclick="openSurveyReport()" style="background:#27ae60;">Survey Report</button>
   <span id="connStatus" class="conn-status"></span>
 </div>
 
@@ -1650,12 +1651,8 @@ async function showDetail(questionId) {
   }
 }
 
-function renderQuestionPreview(q) {
-  const container = document.getElementById('questionPreview');
-  if (!q) { container.innerHTML = '<span class="loading">No data</span>'; return; }
-
+function renderQuestionPreviewHtml(q) {
   let html = '';
-  // Question text
   html += `<div class="qp-text">${q.QuestionText || ''}</div>`;
 
   const type = q.QuestionType;
@@ -1667,7 +1664,6 @@ function renderQuestionPreview(q) {
     const isMulti = ['MAVR', 'MACOL', 'MAHR', 'MSB'].includes(sel);
     const inputType = isMulti ? 'checkbox' : 'radio';
     if (sel === 'DL' || sel === 'SB') {
-      // Dropdown
       html += '<select class="qp-te" disabled>';
       html += '<option value="">— Select —</option>';
       for (const k of choiceOrder) {
@@ -1676,7 +1672,6 @@ function renderQuestionPreview(q) {
       }
       html += '</select>';
     } else {
-      // Radio/Checkbox list
       html += '<ul class="qp-choices">';
       for (const k of choiceOrder) {
         const c = choices[k];
@@ -1688,7 +1683,6 @@ function renderQuestionPreview(q) {
     if (sel === 'ML') {
       html += '<textarea class="qp-te multi" disabled placeholder="Text entry (multi-line)"></textarea>';
     } else if (sel === 'FORM') {
-      // Form fields
       for (const k of choiceOrder) {
         const c = choices[k];
         if (c) html += `<div style="margin-bottom:6px;"><label style="font-size:0.85em;color:#555;">${c.Display || ''}</label><input class="qp-te" disabled></div>`;
@@ -1743,12 +1737,10 @@ function renderQuestionPreview(q) {
     html += `<div class="qp-desc">Preview not available for ${type}/${sel}</div>`;
   }
 
-  // Meta info
   const validation = q.Validation?.Settings || {};
   const forceResp = validation.ForceResponse === 'ON' ? 'Required' : 'Optional';
   html += `<div class="qp-meta">${type} / ${sel}${q.SubSelector ? ' / ' + q.SubSelector : ''} · ${forceResp} · ${q.DataExportTag || q.QuestionID}</div>`;
 
-  // Show embedded data fields for questions with JS
   if (q.QuestionJS) {
     const edMatches = [...q.QuestionJS.matchAll(/setEmbeddedData\s*\(\s*['"]([^'"]+)['"]/g)];
     const edFields = [...new Set(edMatches.map(m => m[1]))];
@@ -1758,7 +1750,13 @@ function renderQuestionPreview(q) {
     }
   }
 
-  container.innerHTML = html;
+  return html;
+}
+
+function renderQuestionPreview(q) {
+  const container = document.getElementById('questionPreview');
+  if (!q) { container.innerHTML = '<span class="loading">No data</span>'; return; }
+  container.innerHTML = renderQuestionPreviewHtml(q);
 }
 
 function switchDetailTab(tab) {
@@ -1770,22 +1768,16 @@ function switchDetailTab(tab) {
 }
 
 // --- Display Logic ---
-function renderDisplayLogic(logic) {
-  const container = document.getElementById('logicDisplay');
-  if (!logic || logic.Type !== 'BooleanExpression') {
-    container.innerHTML = '<span class="loading">No display logic set</span>';
-    return;
-  }
+function renderDisplayLogicHtml(logic) {
+  if (!logic || logic.Type !== 'BooleanExpression') return '';
 
   let html = '';
-  // Iterate through numbered groups
   let groupIdx = 0;
   while (logic[String(groupIdx)]) {
     const group = logic[String(groupIdx)];
     if (groupIdx > 0) {
       html += '<div class="logic-condition"><span class="logic-conjunction">OR</span></div>';
     }
-    // Iterate through conditions in group
     let condIdx = 0;
     while (group[String(condIdx)]) {
       const cond = group[String(condIdx)];
@@ -1797,15 +1789,12 @@ function renderDisplayLogic(logic) {
         } else if (groupIdx === 0 && condIdx === 0) {
           line += '<span class="logic-conjunction">If</span> ';
         }
-        // Question reference
         const qid = cond.QuestionID || '';
         const qData = allQuestions[qid];
         const qName = qData ? (qData.QuestionDescription || qid) : qid;
         line += `<span class="logic-question">${esc(qName)}</span> `;
-        // Choice / value
         const operator = cond.Operator || '';
         if (operator === 'Selected' || operator === 'NotSelected') {
-          // MC — extract choice display
           const choiceLocator = cond.ChoiceLocator || '';
           const choiceKeyMatch = choiceLocator.match(/SelectableChoice\/(\d+)/);
           const choiceKey = choiceKeyMatch ? choiceKeyMatch[1] : '';
@@ -1813,7 +1802,6 @@ function renderDisplayLogic(logic) {
           line += `<span class="logic-choice">"${esc(choiceDisplay)}"</span> `;
           line += `<span class="logic-operator">${operator === 'Selected' ? 'Is Selected' : 'Is Not Selected'}</span>`;
         } else {
-          // TE operators
           const opLabels = {
             Empty: 'Is Empty', NotEmpty: 'Is Not Empty', EqualTo: 'Is Equal To',
             NotEqualTo: 'Is Not Equal To', Contains: 'Contains',
@@ -1832,6 +1820,12 @@ function renderDisplayLogic(logic) {
     }
     groupIdx++;
   }
+  return html;
+}
+
+function renderDisplayLogic(logic) {
+  const container = document.getElementById('logicDisplay');
+  const html = renderDisplayLogicHtml(logic);
   container.innerHTML = html || '<span class="loading">No display logic set</span>';
 }
 
@@ -2389,6 +2383,189 @@ document.addEventListener('click', function(e) {
     document.removeEventListener('mouseup', onStop);
   }
 })();
+
+// --- Survey Report ---
+const REPORT_CSS = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #222; background: #f0f0f0; line-height: 1.6; }
+  .report-wrap { max-width: 850px; margin: 0 auto; padding: 40px 20px 60px; }
+  .report-header { text-align: center; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 2px solid #ccc; }
+  .report-header h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 4px; }
+  .report-meta { font-size: 0.85em; color: #666; }
+  .report-block { margin-bottom: 36px; }
+  .block-title { font-size: 1.15em; font-weight: 700; color: #2c3e50; padding: 10px 16px;
+    background: #fff; border: 1px solid #ddd; border-radius: 6px 6px 0 0; margin-bottom: 0; }
+  .block-qcount { font-weight: 400; color: #888; font-size: 0.85em; }
+  .report-question { background: #fff; border: 1px solid #ddd; border-top: none; padding: 24px;
+    position: relative; }
+  .report-question:last-child { border-radius: 0 0 6px 6px; }
+  .question-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+  .question-header h3 { font-size: 1em; font-weight: 600; color: #333; }
+  .question-meta { font-size: 0.75em; color: #888; margin-top: 2px; }
+  .report-section { margin-bottom: 16px; }
+  .report-section:last-child { margin-bottom: 0; }
+  .report-section h4 { font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.8px;
+    color: #999; margin-bottom: 6px; font-weight: 600; }
+  .preview-content { font-size: 0.9em; padding: 12px; background: #fafafa; border: 1px solid #eee; border-radius: 4px; }
+  pre.report-code { background: #f6f8fa; padding: 12px 14px; border-radius: 4px; font-size: 0.8em;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace; white-space: pre-wrap; word-wrap: break-word;
+    overflow-x: auto; line-height: 1.5; border-left: 3px solid #3498db; }
+  pre.report-code.js-code { border-left-color: #e67e22; }
+  pre.report-code.none { color: #aaa; font-style: italic; border-left-color: #ddd; }
+  .report-footer { text-align: center; font-size: 0.8em; color: #888; margin-top: 40px;
+    padding-top: 20px; border-top: 2px solid #ccc; }
+
+  /* Question preview styles */
+  .qp-text { font-size: 1.05em; margin-bottom: 12px; line-height: 1.5; }
+  .qp-choices { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .qp-choice { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .qp-choice input { flex-shrink: 0; }
+  .qp-te { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; }
+  .qp-te.multi { min-height: 80px; resize: vertical; }
+  .qp-desc { color: #666; font-style: italic; margin-bottom: 8px; font-size: 0.85em; }
+  .qp-slider { margin: 12px 0; }
+  .qp-slider input[type="range"] { width: 100%; }
+  .qp-slider-labels { display: flex; justify-content: space-between; font-size: 0.8em; color: #666; }
+  .qp-meta { font-size: 0.75em; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee; }
+  .embedded-data-info { margin-top: 8px; padding: 6px 8px; background: #fff8e1; border-radius: 4px; font-size: 0.8em; }
+  .ed-title { font-weight: 600; font-size: 0.85em; color: #666; margin-bottom: 2px; }
+  .ed-field { display: inline-block; background: #fff3cd; padding: 1px 6px; border-radius: 3px;
+    font-family: monospace; font-size: 0.9em; margin: 1px 2px; }
+
+  /* Display logic styles */
+  .logic-condition { margin: 2px 0; font-size: 0.85em; }
+  .logic-conjunction { font-weight: 700; color: #2980b9; }
+  .logic-question { color: #16a085; font-weight: 500; }
+  .logic-choice { color: #c0392b; }
+  .logic-operator { color: #8e44ad; }
+
+  @media print {
+    body { background: #fff; }
+    .report-wrap { padding: 20px 0; max-width: 100%; }
+    .report-block { page-break-before: always; }
+    .report-block:first-child { page-break-before: avoid; }
+    .block-title { page-break-after: avoid; }
+    .report-question { page-break-inside: avoid; box-shadow: none; }
+    pre.report-code { white-space: pre-wrap; word-wrap: break-word; }
+    .report-header { border-bottom-color: #000; }
+    .report-footer { border-top-color: #000; }
+  }
+`;
+
+function getBlocksInFlowOrder() {
+  const ordered = [];
+  const seen = new Set();
+  if (surveyFlow && surveyFlow.Flow) {
+    for (const elem of surveyFlow.Flow) {
+      if (elem.Type === 'Block' || elem.Type === 'Standard') {
+        const blockId = elem.ID;
+        const block = surveyBlocks.find(b => b.BlockID === blockId);
+        if (block && block.Type !== 'Trash') {
+          ordered.push(block);
+          seen.add(blockId);
+        }
+      }
+    }
+  }
+  for (const block of surveyBlocks) {
+    if (block.Type !== 'Trash' && !seen.has(block.BlockID)) {
+      ordered.push(block);
+    }
+  }
+  return ordered;
+}
+
+function openSurveyReport() {
+  if (!surveyBlocks.length) { alert('Load a survey first.'); return; }
+
+  const blocks = getBlocksInFlowOrder();
+  const surveyId = document.getElementById('surveyId').value.trim();
+  const now = new Date().toLocaleString();
+  let totalQuestions = 0;
+
+  let body = '';
+  body += `<div class="report-wrap">`;
+  body += `<header class="report-header">
+    <h1>Survey Report</h1>
+    <p class="report-meta">Survey ID: ${esc(surveyId)} &middot; Generated: ${esc(now)}</p>
+  </header>`;
+
+  for (const block of blocks) {
+    body += `<section class="report-block">`;
+    body += `<h2 class="block-title">${esc(block.Description || block.BlockID)} <span class="block-qcount">(${block.QuestionCount} question${block.QuestionCount !== 1 ? 's' : ''})</span></h2>`;
+
+    for (const qSummary of block.Questions) {
+      const q = allQuestions[qSummary.QuestionID];
+      if (!q) continue;
+      totalQuestions++;
+
+      const qid = q.QuestionID || qSummary.QuestionID;
+      const varName = q.QuestionDescription || q.DataExportTag || qid;
+      const type = q.QuestionType || '';
+      const sel = q.Selector || '';
+      const forceResp = q.Validation?.Settings?.ForceResponse === 'ON' ? 'Required' : 'Optional';
+      const hasLogic = !!q.DisplayLogic;
+
+      body += `<article class="report-question">`;
+
+      body += `<div class="question-header">
+        <h3>${esc(qid)} &mdash; ${esc(varName)}</h3>
+        <div class="question-meta">${esc(type)} / ${esc(sel)} &middot; ${forceResp}${hasLogic ? ' &middot; Has Display Logic' : ''}</div>
+      </div>`;
+
+      body += `<div class="report-section">
+        <h4>Preview</h4>
+        <div class="preview-content">${renderQuestionPreviewHtml(q)}</div>
+      </div>`;
+
+      body += `<div class="report-section">
+        <h4>Question HTML</h4>
+        <pre class="report-code">${esc(q.QuestionText || '')}</pre>
+      </div>`;
+
+      body += `<div class="report-section">
+        <h4>JavaScript</h4>`;
+      if (q.QuestionJS) {
+        body += `<pre class="report-code js-code">${esc(q.QuestionJS)}</pre>`;
+      } else {
+        body += `<pre class="report-code none">None</pre>`;
+      }
+      body += `</div>`;
+
+      if (q.DisplayLogic) {
+        const logicHtml = renderDisplayLogicHtml(q.DisplayLogic);
+        if (logicHtml) {
+          body += `<div class="report-section">
+            <h4>Display Logic</h4>
+            <div style="font-size:0.85em;">${logicHtml}</div>
+          </div>`;
+        }
+      }
+
+      body += `</article>`;
+    }
+
+    body += `</section>`;
+  }
+
+  body += `<footer class="report-footer">
+    ${totalQuestions} question${totalQuestions !== 1 ? 's' : ''} across ${blocks.length} block${blocks.length !== 1 ? 's' : ''} &middot; Generated ${esc(now)}
+  </footer>`;
+  body += `</div>`;
+
+  const fullHtml = `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>Survey Report — ${esc(surveyId)}</title>
+<style>${REPORT_CSS}</style>
+</head><body>${body}</body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(fullHtml);
+  w.document.close();
+}
 
 // --- Init ---
 loadCreds();
