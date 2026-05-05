@@ -15,6 +15,7 @@ A locally-hosted web app that uses AI (Anthropic Claude or OpenAI GPT-4o) to con
 - **Display Logic** -- AI-assisted creation of display logic (show/hide questions based on previous answers) with human-readable preview and JSON editor
 - **Embedded Data Manager** -- View all embedded data fields in the sidebar, sourced from both the survey flow and question JavaScript. Fields are labeled as `FLOW`, `FLOW+JS`, or `JS ONLY` (not yet declared in the flow). Renaming a field performs a **global rename** across the survey flow, all question JavaScript (`setEmbeddedData` calls), and piped text references (`${e://Field/...}`) in question text. One-click button to register JS-only fields in the survey flow so they export properly.
 - **JavaScript Editor** -- View, edit, and AI-generate custom Qualtrics question JavaScript
+- **Survey Report** -- Read-only survey viewer at `/report` that displays all questions with rendered preview, raw HTML, JavaScript, and display logic. Download as a self-contained HTML file. Also accessible from the main editor via the "Survey Report" button.
 - **Supported Question Types** -- Multiple Choice (MC), Text Entry (TE), Descriptive Text (DB), Slider, and more
 
 ## Prerequisites
@@ -96,7 +97,8 @@ You'll need:
 qualtrics-generative-survey/
   app.py                       # Flask backend (routes + Qualtrics/LLM API logic)
   templates/
-    index.html                 # Single-page frontend
+    index.html                 # Single-page frontend (editor)
+    report.html                # Read-only survey report viewer
   requirements.txt             # Python dependencies
   QUALTRICS_API_REFERENCE.md   # API reference documentation
 ```
